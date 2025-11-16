@@ -1,4 +1,3 @@
-
 import {
   products,
   orders,
@@ -11,12 +10,12 @@ import {
   accounts,
 } from "@shared/schema.mysql";
 import type {
-  Product,
   InsertProduct,
-  Order,
+  Product,
   InsertOrder,
-  OrderItem,
+  Order,
   InsertOrderItem,
+  OrderItem,
   OrderWithItems,
   StockMovement,
   InsertStockMovement,
@@ -114,22 +113,22 @@ export class DatabaseStorage implements IStorage {
 
   async createProduct(insertProduct: InsertProduct): Promise<Product> {
     const id = randomUUID();
-    
+
     const productData: any = {
       id,
       galleryImages: insertProduct.galleryImages ? JSON.stringify(insertProduct.galleryImages) : null,
       tags: insertProduct.tags ? JSON.stringify(insertProduct.tags) : null,
     };
-    
+
     Object.keys(insertProduct).forEach(key => {
       const value = (insertProduct as any)[key];
       if (value !== undefined && key !== 'galleryImages' && key !== 'tags') {
         productData[key] = value;
       }
     });
-    
+
     console.log('Product data to insert:', JSON.stringify(productData, null, 2));
-    
+
     await db.insert(products).values(productData);
 
     const productResult = await db.select().from(products).where(eq(products.id, id));
@@ -162,7 +161,7 @@ export class DatabaseStorage implements IStorage {
       galleryImages: product.galleryImages ? JSON.stringify(product.galleryImages) : null,
       tags: product.tags ? JSON.stringify(product.tags) : null,
     };
-    
+
     Object.keys(product).forEach(key => {
       const value = (product as any)[key];
       if (value !== undefined && key !== 'galleryImages' && key !== 'tags') {
@@ -590,6 +589,7 @@ export class DatabaseStorage implements IStorage {
           sold: 0,
           returned: 0,
           purchased: 0,
+          initialStock: product.stockQuantity,
         });
       } else {
         await db
@@ -631,7 +631,8 @@ export class DatabaseStorage implements IStorage {
       available: product.stockQuantity,
       sold: 0,
       returned: 0,
-      purchased: product.stockQuantity,
+      purchased: 0,
+      initialStock: product.stockQuantity,
     });
 
     const statsResult = await db.select().from(stockStats).where(eq(stockStats.id, id));

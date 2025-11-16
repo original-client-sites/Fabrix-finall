@@ -1,10 +1,10 @@
-import { mysqlTable, varchar, int, decimal, text, boolean, timestamp } from "drizzle-orm/mysql-core";
+import { pgTable, varchar, integer, numeric, text, boolean, timestamp } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 /* ---------------------- PRODUCTS TABLE ---------------------- */
-export const products = mysqlTable("products", {
+export const products = pgTable("products", {
   id: varchar("id", { length: 36 }).primaryKey(),
   productName: varchar("product_name", { length: 255 }).notNull(),
   sku: varchar("sku", { length: 100 }).notNull(),
@@ -18,9 +18,9 @@ export const products = mysqlTable("products", {
   pattern: varchar("pattern", { length: 100 }),
   gender: varchar("gender", { length: 20 }).notNull(),
 
-  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  costPrice: decimal("cost_price", { precision: 10, scale: 2 }),
-  stockQuantity: int("stock_quantity").default(0).notNull(),
+  price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+  costPrice: numeric("cost_price", { precision: 10, scale: 2 }),
+  stockQuantity: integer("stock_quantity").default(0).notNull(),
   warehouse: varchar("warehouse", { length: 100 }),
 
   productImage: text("product_image"),
@@ -60,7 +60,7 @@ export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Product = typeof products.$inferSelect;
 
 /* ---------------------- ORDERS TABLE ---------------------- */
-export const orders = mysqlTable("orders", {
+export const orders = pgTable("orders", {
   id: varchar("id", { length: 36 }).primaryKey(),
   orderNumber: varchar("order_number", { length: 50 }).notNull(),
   customerName: varchar("customer_name", { length: 100 }).notNull(),
@@ -69,7 +69,7 @@ export const orders = mysqlTable("orders", {
   status: varchar("status", { length: 50 }).default("pending").notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).default("cash").notNull(),
   notes: text("notes"),
-  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -85,15 +85,15 @@ export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type Order = typeof orders.$inferSelect;
 
 /* ---------------------- ORDER ITEMS TABLE ---------------------- */
-export const orderItems = mysqlTable("order_items", {
+export const orderItems = pgTable("order_items", {
   id: varchar("id", { length: 36 }).primaryKey(),
   orderId: varchar("order_id", { length: 36 }).notNull(),
   productId: varchar("product_id", { length: 36 }).notNull(),
   productName: varchar("product_name", { length: 255 }).notNull(),
   sku: varchar("sku", { length: 100 }).notNull(),
-  quantity: int("quantity").notNull(),
-  unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
-  subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
+  quantity: integer("quantity").notNull(),
+  unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
+  subtotal: numeric("subtotal", { precision: 10, scale: 2 }).notNull(),
 });
 
 export const insertOrderItemSchema = createInsertSchema(orderItems, {
@@ -113,13 +113,13 @@ export type OrderWithItems = Order & {
 };
 
 /* ---------------------- STOCK MOVEMENTS ---------------------- */
-export const stockMovements = mysqlTable("stock_movements", {
+export const stockMovements = pgTable("stock_movements", {
   id: varchar("id", { length: 36 }).primaryKey(),
   productId: varchar("product_id", { length: 36 }).notNull(),
   productName: varchar("product_name", { length: 255 }).notNull(),
   sku: varchar("sku", { length: 100 }).notNull(),
   type: varchar("type", { length: 50 }).notNull(),
-  quantity: int("quantity").notNull(),
+  quantity: integer("quantity").notNull(),
   reason: varchar("reason", { length: 255 }).notNull(),
   notes: text("notes"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
@@ -138,16 +138,17 @@ export type InsertStockMovement = z.infer<typeof insertStockMovementSchema>;
 export type StockMovement = typeof stockMovements.$inferSelect;
 
 /* ---------------------- STOCK STATS ---------------------- */
-export const stockStats = mysqlTable("stock_stats", {
+export const stockStats = pgTable("stock_stats", {
   id: varchar("id", { length: 36 }).primaryKey(),
   productId: varchar("product_id", { length: 36 }).notNull(),
   productName: varchar("product_name", { length: 255 }).notNull(),
   sku: varchar("sku", { length: 100 }).notNull(),
   category: varchar("category", { length: 100 }).notNull(),
-  available: int("available").default(0).notNull(),
-  sold: int("sold").default(0).notNull(),
-  returned: int("returned").default(0).notNull(),
-  purchased: int("purchased").default(0).notNull(),
+  available: integer("available").default(0).notNull(),
+  sold: integer("sold").default(0).notNull(),
+  returned: integer("returned").default(0).notNull(),
+  purchased: integer("purchased").default(0).notNull(),
+  initialStock: integer("initial_stock").default(0).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -162,7 +163,7 @@ export type InsertStockStats = z.infer<typeof insertStockStatsSchema>;
 export type StockStats = typeof stockStats.$inferSelect;
 
 /* ---------------------- RETURNS ---------------------- */
-export const returns = mysqlTable("returns", {
+export const returns = pgTable("returns", {
   id: varchar("id", { length: 36 }).primaryKey(),
   returnNumber: varchar("return_number", { length: 50 }).notNull(),
   orderId: varchar("order_id", { length: 36 }).notNull(),
@@ -173,10 +174,10 @@ export const returns = mysqlTable("returns", {
   reason: varchar("reason", { length: 255 }).notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).default("cash").notNull(),
   notes: text("notes"),
-  refundAmount: decimal("refund_amount", { precision: 10, scale: 2 }),
-  creditAmount: decimal("credit_amount", { precision: 10, scale: 2 }),
-  exchangeValue: decimal("exchange_value", { precision: 10, scale: 2 }),
-  additionalPayment: decimal("additional_payment", { precision: 10, scale: 2 }),
+  refundAmount: numeric("refund_amount", { precision: 10, scale: 2 }),
+  creditAmount: numeric("credit_amount", { precision: 10, scale: 2 }),
+  exchangeValue: numeric("exchange_value", { precision: 10, scale: 2 }),
+  additionalPayment: numeric("additional_payment", { precision: 10, scale: 2 }),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -197,15 +198,15 @@ export type InsertReturn = z.infer<typeof insertReturnSchema>;
 export type Return = typeof returns.$inferSelect;
 
 /* ---------------------- RETURN ITEMS ---------------------- */
-export const returnItems = mysqlTable("return_items", {
+export const returnItems = pgTable("return_items", {
   id: varchar("id", { length: 36 }).primaryKey(),
   returnId: varchar("return_id", { length: 36 }).notNull(),
   productId: varchar("product_id", { length: 36 }).notNull(),
   productName: varchar("product_name", { length: 255 }).notNull(),
   sku: varchar("sku", { length: 100 }).notNull(),
-  quantity: int("quantity").notNull(),
-  unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
-  subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
+  quantity: integer("quantity").notNull(),
+  unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
+  subtotal: numeric("subtotal", { precision: 10, scale: 2 }).notNull(),
   exchangeProductId: varchar("exchange_product_id", { length: 36 }),
   exchangeProductName: varchar("exchange_product_name", { length: 255 }),
 });
@@ -232,11 +233,11 @@ export type ReturnWithItems = Return & {
 };
 
 /* ---------------------- DISCOUNT CODES ---------------------- */
-export const discountCodes = mysqlTable("discount_codes", {
+export const discountCodes = pgTable("discount_codes", {
   id: varchar("id", { length: 36 }).primaryKey(),
   code: varchar("code", { length: 50 }).notNull(),
   customerEmail: varchar("customer_email", { length: 150 }).notNull(),
-  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   isUsed: boolean("is_used").default(false),
   usedAt: timestamp("used_at"),
   expiresAt: timestamp("expires_at"),
@@ -254,27 +255,27 @@ export type InsertDiscountCode = z.infer<typeof insertDiscountCodeSchema>;
 export type DiscountCode = typeof discountCodes.$inferSelect;
 
 /* ---------------------- ACCOUNTS (P&L) TABLE ---------------------- */
-export const accounts = mysqlTable("accounts", {
+export const accounts = pgTable("accounts", {
   id: varchar("id", { length: 36 }).primaryKey(),
   transactionType: varchar("transaction_type", { length: 50 }).notNull(), // 'sale', 'purchase', 'return', 'refund', 'adjustment'
   referenceId: varchar("reference_id", { length: 36 }), // order_id, return_id, etc.
   referenceNumber: varchar("reference_number", { length: 50 }), // order number, return number, etc.
   
   // Financial details
-  revenue: decimal("revenue", { precision: 10, scale: 2 }).default("0.00").notNull(),
-  cost: decimal("cost", { precision: 10, scale: 2 }).default("0.00").notNull(),
-  profit: decimal("profit", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  revenue: numeric("revenue", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  cost: numeric("cost", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  profit: numeric("profit", { precision: 10, scale: 2 }).default("0.00").notNull(),
   
   // Additional breakdowns
-  taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }).default("0.00"),
-  discountAmount: decimal("discount_amount", { precision: 10, scale: 2 }).default("0.00"),
-  shippingCost: decimal("shipping_cost", { precision: 10, scale: 2 }).default("0.00"),
+  taxAmount: numeric("tax_amount", { precision: 10, scale: 2 }).default("0.00"),
+  discountAmount: numeric("discount_amount", { precision: 10, scale: 2 }).default("0.00"),
+  shippingCost: numeric("shipping_cost", { precision: 10, scale: 2 }).default("0.00"),
   
   // Product/Category info
   productId: varchar("product_id", { length: 36 }),
   productName: varchar("product_name", { length: 255 }),
   category: varchar("category", { length: 100 }),
-  quantity: int("quantity").default(0),
+  quantity: integer("quantity").default(0),
   
   // Customer info
   customerName: varchar("customer_name", { length: 100 }),
@@ -282,9 +283,9 @@ export const accounts = mysqlTable("accounts", {
   
   // Metadata
   notes: text("notes"),
-  fiscalYear: int("fiscal_year"), // e.g., 2024
-  fiscalMonth: int("fiscal_month"), // 1-12
-  fiscalQuarter: int("fiscal_quarter"), // 1-4
+  fiscalYear: integer("fiscal_year"), // e.g., 2024
+  fiscalMonth: integer("fiscal_month"), // 1-12
+  fiscalQuarter: integer("fiscal_quarter"), // 1-4
   
   transactionDate: timestamp("transaction_date").default(sql`CURRENT_TIMESTAMP`),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),

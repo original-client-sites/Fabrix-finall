@@ -173,6 +173,13 @@ export default function StockHistory() {
 
     // Update available to match formula: available = initialStock + purchased + returned - sold
     Array.from(statsMap.values()).forEach(stats => {
+      // If initialStock is 0, use the product's current stock quantity as initial
+      if (stats.initialStock === 0) {
+        const product = products.find(p => p.id === stats.productId);
+        if (product) {
+          stats.initialStock = product.stockQuantity;
+        }
+      }
       stats.available = stats.initialStock + stats.purchased + stats.returned - stats.sold;
     });
 

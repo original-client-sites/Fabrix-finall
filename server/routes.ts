@@ -152,6 +152,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const product = await storage.createProduct(parsed.data);
 
+      // Create initial stock movement
+      if (parsed.data.stockQuantity > 0) {
+        await storage.createStockMovement({
+          productId: product.id,
+          productName: product.productName,
+          sku: product.sku,
+          type: "in",
+          quantity: parsed.data.stockQuantity,
+          reason: "Initial Stock",
+          notes: "Initial stock when product was created",
+        });
+      }
+
       // Record purchase profit/loss in accounts table
       if (parsed.data.costPrice && parsed.data.stockQuantity > 0) {
         const sellingPrice = parseFloat(parsed.data.price.toString());
