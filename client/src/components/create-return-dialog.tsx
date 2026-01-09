@@ -506,7 +506,7 @@ export function CreateReturnDialog({ open, onOpenChange, order }: CreateReturnDi
                 <Label htmlFor="paymentMethod">Payment Method for Additional Payment *</Label>
                 <Select
                   value={form.watch("paymentMethod")}
-                  onValueChange={(value) => form.setValue("paymentMethod", value)}
+                  onValueChange={(value) => form.setValue("paymentMethod", value as any as InsertReturn["paymentMethod"])}
                 >
                   <SelectTrigger id="paymentMethod">
                     <SelectValue placeholder="Select payment method" />
