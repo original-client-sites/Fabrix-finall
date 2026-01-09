@@ -293,32 +293,39 @@ export class PDFService {
         });
 
         // Discount information if applicable
-        if (order.discountAmount && parseFloat(order.discountAmount) > 0) {
+        if (order.discountAmount && order.discountAmount !== null && order.discountAmount !== undefined && parseFloat(order.discountAmount.toString()) > 0) {
+          // Subtotal
           doc.text('Subtotal:', 320, yPosition);
-          doc.text(`$${order.subTotal}`, 480, yPosition, { align: 'right' });
-          yPosition += 25;
+          doc.text(`$${parseFloat((order.subTotal?.toString() || '0')).toFixed(2)}`, 480, yPosition, { align: 'right' });
+          yPosition += 20;
           
-          if (order.discountPercentage && parseFloat(order.discountPercentage) > 0) {
-            doc.text(`Discount (${order.discountPercentage}%):`, 320, yPosition);
+          // Discount details
+          doc.fontSize(12).font('Helvetica-Bold');
+          if (order.discountPercentage && order.discountPercentage !== null && order.discountPercentage !== undefined && parseFloat(order.discountPercentage.toString()) > 0) {
+            doc.text(`Discount (${parseFloat(order.discountPercentage.toString()).toFixed(2)}%):`, 320, yPosition);
           } else {
             doc.text('Discount:', 320, yPosition);
           }
-          doc.text(`-$${order.discountAmount}`, 480, yPosition, { align: 'right' });
+          doc.text(`-$${parseFloat(order.discountAmount.toString()).toFixed(2)}`, 480, yPosition, { align: 'right' });
           yPosition += 25;
           
+          // Final total after discount
           doc.moveTo(50, yPosition).lineTo(550, yPosition).stroke();
           yPosition += 15;
           
           doc.fontSize(14).font('Helvetica-Bold');
-          doc.text('GRAND TOTAL:', 320, yPosition);
-          doc.text(`$${order.totalAmount}`, 480, yPosition, { align: 'right' });
+          doc.text('TOTAL AFTER DISCOUNT:', 320, yPosition);
+          doc.text(`$${parseFloat(order.totalAmount.toString()).toFixed(2)}`, 480, yPosition, { align: 'right' });
+          
+          // Reset font back to normal for subsequent text
+          doc.fontSize(10).font('Helvetica');
         } else {
           // Total
           doc.moveTo(50, yPosition).lineTo(550, yPosition).stroke();
           yPosition += 15;
           doc.fontSize(14).font('Helvetica-Bold');
           doc.text('GRAND TOTAL:', 320, yPosition);
-          doc.text(`$${order.totalAmount}`, 480, yPosition, { align: 'right' });
+          doc.text(`$${parseFloat(order.totalAmount.toString()).toFixed(2)}`, 480, yPosition, { align: 'right' });
         }
 
         // Amount in words (optional - you can implement this)
