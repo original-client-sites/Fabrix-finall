@@ -31,6 +31,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { insertProductSchema, type Product, type InsertProduct } from "@shared/schema";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { formatInIST } from "@/lib/utils";
 
 interface ProductDialogProps {
   open: boolean;

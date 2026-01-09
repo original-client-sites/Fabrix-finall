@@ -68,10 +68,22 @@ export const orders = mysqlTable("orders", {
   customerEmail: varchar("customer_email", { length: 150 }),
   customerPhone: varchar("customer_phone", { length: 20 }),
   status: varchar("status", { length: 50 }).default("pending").notNull(),
+  paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
   notes: text("notes"),
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const insertOrderSchema = createInsertSchema(orders, {
+  customerName: z.string().min(1, "Customer name is required"),
+  customerEmail: z.string().email().optional().or(z.literal("")),
+  status: z.enum(["pending", "processing", "shipped", "delivered", "cancelled"]),
+  paymentMethod: z.enum(["cash", "credit_card", "debit_card", "upi", "bank_transfer", "store_credit", "mixed"]),
+  totalAmount: z.string().min(1, "Total amount is required"),
+}).omit({ id: true, createdAt: true, orderNumber: true });
+
+export type InsertOrder = z.infer<typeof insertOrderSchema>;
+export type Order = typeof orders.$inferSelect;
 
 /* ---------------------- ORDER ITEMS TABLE ---------------------- */
 export const orderItems = mysqlTable("order_items", {
@@ -85,6 +97,22 @@ export const orderItems = mysqlTable("order_items", {
   subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
 });
 
+export const insertOrderItemSchema = createInsertSchema(orderItems, {
+  orderId: z.string().min(1, "Order ID is required"),
+  productId: z.string().min(1, "Product ID is required"),
+  productName: z.string().min(1, "Product name is required"),
+  sku: z.string().min(1, "SKU is required"),
+  quantity: z.number().int().min(1, "Quantity must be 1 or greater"),
+  unitPrice: z.string().min(1, "Unit price is required"),
+}).omit({ id: true });
+
+export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
+export type OrderItem = typeof orderItems.$inferSelect;
+
+export type OrderWithItems = Order & {
+  items: OrderItem[];
+};
+
 /* ---------------------- STOCK MOVEMENTS ---------------------- */
 export const stockMovements = mysqlTable("stock_movements", {
   id: varchar("id", { length: 36 }).primaryKey(),
@@ -97,6 +125,18 @@ export const stockMovements = mysqlTable("stock_movements", {
   notes: text("notes"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const insertStockMovementSchema = createInsertSchema(stockMovements, {
+  productId: z.string().min(1, "Product ID is required"),
+  productName: z.string().min(1, "Product name is required"),
+  sku: z.string().min(1, "SKU is required"),
+  type: z.enum(["in", "out", "adjustment"]),
+  quantity: z.number().int().min(1, "Quantity must be at least 1"),
+  reason: z.string().min(1, "Reason is required"),
+}).omit({ id: true, createdAt: true });
+
+export type InsertStockMovement = z.infer<typeof insertStockMovementSchema>;
+export type StockMovement = typeof stockMovements.$inferSelect;
 
 /* ---------------------- STOCK STATS ---------------------- */
 export const stockStats = mysqlTable("stock_stats", {
@@ -112,6 +152,16 @@ export const stockStats = mysqlTable("stock_stats", {
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const insertStockStatsSchema = createInsertSchema(stockStats, {
+  productId: z.string().min(1, "Product ID is required"),
+  productName: z.string().min(1, "Product name is required"),
+  sku: z.string().min(1, "SKU is required"),
+  category: z.string().min(1, "Category is required"),
+}).omit({ id: true, updatedAt: true });
+
+export type InsertStockStats = z.infer<typeof insertStockStatsSchema>;
+export type StockStats = typeof stockStats.$inferSelect;
+
 /* ---------------------- RETURNS ---------------------- */
 export const returns = mysqlTable("returns", {
   id: varchar("id", { length: 36 }).primaryKey(),
@@ -122,6 +172,7 @@ export const returns = mysqlTable("returns", {
   customerEmail: varchar("customer_email", { length: 150 }),
   status: varchar("status", { length: 50 }).default("pending").notNull(),
   reason: varchar("reason", { length: 255 }).notNull(),
+  paymentMethod: varchar("payment_method", { length: 50 }).default("cash").notNull(),
   notes: text("notes"),
   refundAmount: decimal("refund_amount", { precision: 10, scale: 2 }),
   creditAmount: decimal("credit_amount", { precision: 10, scale: 2 }),
@@ -129,6 +180,22 @@ export const returns = mysqlTable("returns", {
   additionalPayment: decimal("additional_payment", { precision: 10, scale: 2 }),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const insertReturnSchema = createInsertSchema(returns, {
+  customerName: z.string().min(1, "Customer name is required"),
+  customerEmail: z.string().email().optional().or(z.literal("")),
+  status: z.enum(["pending", "approved", "rejected", "completed"]),
+  reason: z.string().min(1, "Return reason is required"),
+  paymentMethod: z.enum(["cash", "credit_card", "debit_card", "upi", "bank_transfer", "store_credit", "mixed"]),
+  refundAmount: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+  creditAmount: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+  exchangeValue: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+  additionalPayment: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+  notes: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+}).omit({ id: true, createdAt: true, returnNumber: true });
+
+export type InsertReturn = z.infer<typeof insertReturnSchema>;
+export type Return = typeof returns.$inferSelect;
 
 /* ---------------------- RETURN ITEMS ---------------------- */
 export const returnItems = mysqlTable("return_items", {
@@ -144,6 +211,24 @@ export const returnItems = mysqlTable("return_items", {
   exchangeProductName: varchar("exchange_product_name", { length: 255 }),
 });
 
+export const insertReturnItemSchema = createInsertSchema(returnItems, {
+  returnId: z.string().min(1, "Return ID is required"),
+  productId: z.string().min(1, "Product ID is required"),
+  productName: z.string().min(1, "Product name is required"),
+  sku: z.string().min(1, "SKU is required"),
+  quantity: z.number().int().min(1, "Quantity must be 1 or greater"),
+  unitPrice: z.string().min(1, "Unit price is required"),
+  exchangeProductId: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+  exchangeProductName: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+}).omit({ id: true });
+
+export type InsertReturnItem = z.infer<typeof insertReturnItemSchema>;
+export type ReturnItem = typeof returnItems.$inferSelect;
+
+export type ReturnWithItems = Return & {
+  items: ReturnItem[];
+};
+
 /* ---------------------- DISCOUNT CODES ---------------------- */
 export const discountCodes = mysqlTable("discount_codes", {
   id: varchar("id", { length: 36 }).primaryKey(),
@@ -155,6 +240,16 @@ export const discountCodes = mysqlTable("discount_codes", {
   expiresAt: timestamp("expires_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const insertDiscountCodeSchema = createInsertSchema(discountCodes, {
+  code: z.string().min(1, "Code is required"),
+  customerEmail: z.string().email("Valid email is required"),
+  amount: z.string().min(1, "Amount is required"),
+  expiresAt: z.date().optional(),
+}).omit({ id: true, createdAt: true, isUsed: true, usedAt: true });
+
+export type InsertDiscountCode = z.infer<typeof insertDiscountCodeSchema>;
+export type DiscountCode = typeof discountCodes.$inferSelect;
 
 /* ---------------------- ACCOUNTS (P&L) TABLE ---------------------- */
 export const accounts = mysqlTable("accounts", {
@@ -191,4 +286,24 @@ export const accounts = mysqlTable("accounts", {
 export const insertAccountSchema = createInsertSchema(accounts, {
   transactionType: z.enum(["sale", "purchase", "return", "refund", "adjustment", "direct_income"]),
   revenue: z.string().min(1, "Revenue is required"),
-});
+  cost: z.string().min(1, "Cost is required"),
+  profit: z.string().min(1, "Profit is required"),
+  taxAmount: z.string().transform(val => val === "" ? "0.00" : val).optional(),
+  discountAmount: z.string().transform(val => val === "" ? "0.00" : val).optional(),
+  shippingCost: z.string().transform(val => val === "" ? "0.00" : val).optional(),
+  fiscalYear: z.number().int().optional(),
+  fiscalMonth: z.number().int().min(1).max(12).optional(),
+  fiscalQuarter: z.number().int().min(1).max(4).optional(),
+  quantity: z.number().int().min(0).optional(),
+  referenceId: z.string().optional(),
+  referenceNumber: z.string().optional(),
+  productId: z.string().optional(),
+  productName: z.string().optional(),
+  category: z.string().optional(),
+  customerName: z.string().optional(),
+  customerEmail: z.string().email().optional().or(z.literal("")),
+  notes: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+}).omit({ id: true, createdAt: true });
+
+export type InsertAccount = z.infer<typeof insertAccountSchema>;
+export type Account = typeof accounts.$inferSelect;

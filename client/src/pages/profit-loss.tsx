@@ -28,6 +28,7 @@ import {
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer } from "recharts";
 import type { Product, OrderWithItems, ReturnWithItems, StockMovement, Account } from "@shared/schema";
 import { format, startOfDay, startOfHour, startOfMonth, startOfYear, subDays, subMonths, subYears } from "date-fns";
+import { formatInIST } from "@/lib/utils";
 
 type TimeRange = "hourly" | "daily" | "monthly" | "yearly";
 
@@ -187,7 +188,7 @@ export default function ProfitLoss() {
       const profit = netRevenue - netCost + purchaseProfit;
 
       return {
-        period: format(period, formatString),
+        period: formatInIST(period, formatString),
         revenue: parseFloat(netRevenue.toFixed(2)),
         cost: parseFloat(netCost.toFixed(2)),
         profit: parseFloat(profit.toFixed(2)),

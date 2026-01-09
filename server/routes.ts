@@ -300,6 +300,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { items, ...orderData } = req.body;
 
+      console.log("DEBUG: Order data received at server:", {
+        orderData,
+        items,
+        paymentMethod: orderData.paymentMethod
+      });
+
       const parsedOrder = insertOrderSchema.safeParse(orderData);
       if (!parsedOrder.success) {
         const error = fromZodError(parsedOrder.error);
@@ -317,6 +323,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const error = fromZodError(parsedItems.error);
         return res.status(400).json({ error: error.message });
       }
+
+      console.log("DEBUG: Parsed order data before DB insert:", {
+        parsedOrderData: parsedOrder.data,
+        paymentMethod: parsedOrder.data.paymentMethod
+      });
 
       const order = await storage.createOrder(parsedOrder.data, parsedItems.data);
       res.status(201).json(order);
