@@ -46,27 +46,26 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
 
   const form = useForm<InsertProduct>({
     resolver: zodResolver(insertProductSchema),
-    defaultValues: product || {
-      productName: "",
-      sku: "",
-      category: "",
-      brand: "",
-      description: "",
-      color: "",
-      size: "",
-      fabric: "",
-      pattern: "",
-      gender: "",
-      price: "0",
-      costPrice: "",
-      stockQuantity: 0,
-      warehouse: "",
-      productImage: "",
-      galleryImages: [],
-      isFeatured: false,
-      launchDate: undefined,
-      rating: "",
-      tags: [],
+    defaultValues: {
+      productName: product?.productName ?? "",
+      sku: product?.sku ?? "",
+      category: product?.category ?? "",
+      brand: product?.brand ?? "",
+      description: product?.description ?? "",
+      color: product?.color ?? "",
+      size: product?.size ?? "",
+      fabric: product?.fabric ?? "",
+      pattern: product?.pattern ?? "",
+      price: product?.price?.toString() ?? "0",
+      costPrice: product?.costPrice?.toString() ?? "",
+      stockQuantity: product?.stockQuantity ?? 0,
+      warehouse: product?.warehouse ?? "",
+      productImage: product?.productImage ?? "",
+      galleryImages: product?.galleryImages ? (typeof product.galleryImages === 'string' ? JSON.parse(product.galleryImages) : product.galleryImages) : [],
+      isFeatured: product?.isFeatured ?? false,
+      launchDate: product?.launchDate ?? undefined,
+      rating: product?.rating ?? "",
+      tags: product?.tags ? (typeof product.tags === 'string' ? JSON.parse(product.tags) : product.tags) : [],
     },
   });
 
@@ -142,15 +141,17 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
 
   const addTag = () => {
     if (tagInput.trim()) {
-      const currentTags = form.getValues("tags") || [];
-      form.setValue("tags", [...currentTags, tagInput.trim()]);
+      const currentTags = (form.getValues("tags") as unknown as string[]) || [];
+      const newTags = [...currentTags, tagInput.trim()];
+      form.setValue("tags", newTags as any);
       setTagInput("");
     }
   };
 
   const removeTag = (index: number) => {
-    const currentTags = form.getValues("tags") || [];
-    form.setValue("tags", currentTags.filter((_, i) => i !== index));
+    const currentTags = (form.getValues("tags") as unknown as string[]) || [];
+    const newTags = currentTags.filter((_, i) => i !== index);
+    form.setValue("tags", newTags as any);
   };
 
   const isPending = createMutation.isPending || updateMutation.isPending;
@@ -166,11 +167,9 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           <Tabs value={currentTab} onValueChange={setCurrentTab}>
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="basic" data-testid="tab-basic">Basic Info</TabsTrigger>
-              <TabsTrigger value="variants" data-testid="tab-variants">Variants</TabsTrigger>
               <TabsTrigger value="pricing" data-testid="tab-pricing">Pricing & Stock</TabsTrigger>
-              <TabsTrigger value="media" data-testid="tab-media">Media & More</TabsTrigger>
             </TabsList>
 
             <TabsContent value="basic" className="space-y-6 pt-6">
@@ -223,14 +222,12 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="T-Shirt">T-Shirt</SelectItem>
-                      <SelectItem value="Jeans">Jeans</SelectItem>
-                      <SelectItem value="Dress">Dress</SelectItem>
-                      <SelectItem value="Jacket">Jacket</SelectItem>
+                      <SelectItem value="T-shirt">T-shirt</SelectItem>
                       <SelectItem value="Shirt">Shirt</SelectItem>
-                      <SelectItem value="Pants">Pants</SelectItem>
-                      <SelectItem value="Skirt">Skirt</SelectItem>
-                      <SelectItem value="Sweater">Sweater</SelectItem>
+                      <SelectItem value="Jeans">Jeans</SelectItem>
+                      <SelectItem value="Full sleeve t-shirt">Full sleeve t-shirt</SelectItem>
+                      <SelectItem value="Lean paint">Lean paint</SelectItem>
+                      <SelectItem value="Polo T-shirt">Polo T-shirt</SelectItem>
                     </SelectContent>
                   </Select>
                   {form.formState.errors.category && (
@@ -252,6 +249,34 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="color">Color *</Label>
+                  <Input
+                    id="color"
+                    {...form.register("color")}
+                    placeholder="e.g., Red, Blue, Black"
+                    data-testid="input-color"
+                  />
+                  {form.formState.errors.color && (
+                    <p className="text-sm text-destructive">{form.formState.errors.color.message}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="size">Size *</Label>
+                  <Input
+                    id="size"
+                    {...form.register("size")}
+                    placeholder="e.g., S, M, L, XL"
+                    data-testid="input-size"
+                  />
+                  {form.formState.errors.size && (
+                    <p className="text-sm text-destructive">{form.formState.errors.size.message}</p>
+                  )}
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="description">Description</Label>
                 <Textarea
@@ -261,118 +286,6 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
                   rows={4}
                   data-testid="input-description"
                 />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="variants" className="space-y-6 pt-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="color">Color *</Label>
-                  <Select
-                    value={form.watch("color")}
-                    onValueChange={(value) => form.setValue("color", value)}
-                  >
-                    <SelectTrigger id="color" data-testid="select-color">
-                      <SelectValue placeholder="Select color" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Red">Red</SelectItem>
-                      <SelectItem value="Blue">Blue</SelectItem>
-                      <SelectItem value="Black">Black</SelectItem>
-                      <SelectItem value="White">White</SelectItem>
-                      <SelectItem value="Green">Green</SelectItem>
-                      <SelectItem value="Yellow">Yellow</SelectItem>
-                      <SelectItem value="Gray">Gray</SelectItem>
-                      <SelectItem value="Pink">Pink</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {form.formState.errors.color && (
-                    <p className="text-sm text-destructive">{form.formState.errors.color.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="size">Size *</Label>
-                  <Select
-                    value={form.watch("size")}
-                    onValueChange={(value) => form.setValue("size", value)}
-                  >
-                    <SelectTrigger id="size" data-testid="select-size">
-                      <SelectValue placeholder="Select size" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="XS">XS</SelectItem>
-                      <SelectItem value="S">S</SelectItem>
-                      <SelectItem value="M">M</SelectItem>
-                      <SelectItem value="L">L</SelectItem>
-                      <SelectItem value="XL">XL</SelectItem>
-                      <SelectItem value="XXL">XXL</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {form.formState.errors.size && (
-                    <p className="text-sm text-destructive">{form.formState.errors.size.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="fabric">Fabric</Label>
-                  <Select
-                    value={form.watch("fabric") || ""}
-                    onValueChange={(value) => form.setValue("fabric", value)}
-                  >
-                    <SelectTrigger id="fabric" data-testid="select-fabric">
-                      <SelectValue placeholder="Select fabric" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Cotton">Cotton</SelectItem>
-                      <SelectItem value="Polyester">Polyester</SelectItem>
-                      <SelectItem value="Linen">Linen</SelectItem>
-                      <SelectItem value="Silk">Silk</SelectItem>
-                      <SelectItem value="Wool">Wool</SelectItem>
-                      <SelectItem value="Denim">Denim</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="pattern">Pattern</Label>
-                  <Select
-                    value={form.watch("pattern") || ""}
-                    onValueChange={(value) => form.setValue("pattern", value)}
-                  >
-                    <SelectTrigger id="pattern" data-testid="select-pattern">
-                      <SelectValue placeholder="Select pattern" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Solid">Solid</SelectItem>
-                      <SelectItem value="Striped">Striped</SelectItem>
-                      <SelectItem value="Checked">Checked</SelectItem>
-                      <SelectItem value="Printed">Printed</SelectItem>
-                      <SelectItem value="Floral">Floral</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="gender">Gender *</Label>
-                <Select
-                  value={form.watch("gender")}
-                  onValueChange={(value) => form.setValue("gender", value)}
-                >
-                  <SelectTrigger id="gender" data-testid="select-gender">
-                    <SelectValue placeholder="Select gender" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Men">Men</SelectItem>
-                    <SelectItem value="Women">Women</SelectItem>
-                    <SelectItem value="Unisex">Unisex</SelectItem>
-                    <SelectItem value="Kids">Kids</SelectItem>
-                  </SelectContent>
-                </Select>
-                {form.formState.errors.gender && (
-                  <p className="text-sm text-destructive">{form.formState.errors.gender.message}</p>
-                )}
               </div>
             </TabsContent>
 
@@ -436,376 +349,6 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
                     data-testid="input-warehouse"
                   />
                 </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="media" className="space-y-6 pt-6">
-              <div className="space-y-3">
-                <Label>Product Image</Label>
-                {!form.watch("productImage") ? (
-                  <div className="border-2 border-dashed rounded-lg p-8 text-center">
-                    <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Click upload button to add a product image
-                    </p>
-                    <input
-                      type="file"
-                      id="product-image-upload"
-                      accept="image/*"
-                      className="hidden"
-                      data-testid="input-file-product-image"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-
-                        setIsUploading(true);
-                        try {
-                          const formData = new FormData();
-                          formData.append("image", file);
-
-                          const response = await fetch("/api/upload/image", {
-                            method: "POST",
-                            body: formData,
-                          });
-
-                          if (!response.ok) throw new Error("Upload failed");
-
-                          const data = await response.json();
-                          form.setValue("productImage", data.url);
-                          toast({
-                            title: "Success",
-                            description: "Image uploaded successfully",
-                          });
-                        } catch (error) {
-                          toast({
-                            title: "Error",
-                            description: "Failed to upload image",
-                            variant: "destructive",
-                          });
-                        } finally {
-                          setIsUploading(false);
-                        }
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={isUploading}
-                      onClick={() => document.getElementById("product-image-upload")?.click()}
-                      data-testid="button-upload-image"
-                    >
-                      {isUploading ? (
-                        <>
-                          <Upload className="h-4 w-4 mr-2 animate-pulse" />
-                          Uploading...
-                        </>
-                      ) : (
-                        <>
-                          <Upload className="h-4 w-4 mr-2" />
-                          Upload Image
-                        </>
-                      )}
-                    </Button>
-                    <p className="text-xs text-muted-foreground mt-3">
-                      Or{" "}
-                      <button
-                        type="button"
-                        className="text-primary hover:underline"
-                        onClick={() => {
-                          const url = prompt("Enter image URL:");
-                          if (url) form.setValue("productImage", url);
-                        }}
-                      >
-                        enter URL
-                      </button>
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="relative rounded-lg border overflow-hidden group">
-                      <img
-                        src={form.watch("productImage")!}
-                        alt="Product preview"
-                        className="w-full h-64 object-cover"
-                        data-testid="img-product-preview"
-                      />
-                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => {
-                            form.setValue("productImage", "");
-                            const input = document.getElementById("product-image-upload") as HTMLInputElement;
-                            if (input) input.value = "";
-                          }}
-                          data-testid="button-remove-image"
-                        >
-                          <X className="h-4 w-4 mr-2" />
-                          Remove
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => document.getElementById("product-image-upload")?.click()}
-                          data-testid="button-change-image"
-                        >
-                          <Upload className="h-4 w-4 mr-2" />
-                          Change
-                        </Button>
-                      </div>
-                    </div>
-                    <input
-                      type="file"
-                      id="product-image-upload"
-                      accept="image/*"
-                      className="hidden"
-                      data-testid="input-file-product-image"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-
-                        setIsUploading(true);
-                        try {
-                          const formData = new FormData();
-                          formData.append("image", file);
-
-                          const response = await fetch("/api/upload/image", {
-                            method: "POST",
-                            body: formData,
-                          });
-
-                          if (!response.ok) throw new Error("Upload failed");
-
-                          const data = await response.json();
-                          form.setValue("productImage", data.url);
-                          toast({
-                            title: "Success",
-                            description: "Image uploaded successfully",
-                          });
-                        } catch (error) {
-                          toast({
-                            title: "Error",
-                            description: "Failed to upload image",
-                            variant: "destructive",
-                          });
-                        } finally {
-                          setIsUploading(false);
-                        }
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <Label>Gallery Images (Optional)</Label>
-                <div className="border-2 border-dashed rounded-lg p-6">
-                  <input
-                    type="file"
-                    id="gallery-images-upload"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    data-testid="input-file-gallery-images"
-                    onChange={async (e) => {
-                      const files = Array.from(e.target.files || []);
-                      if (files.length === 0) return;
-
-                      setIsUploading(true);
-                      try {
-                        const formData = new FormData();
-                        files.forEach((file) => {
-                          formData.append("images", file);
-                        });
-
-                        const response = await fetch("/api/upload/images", {
-                          method: "POST",
-                          body: formData,
-                        });
-
-                        if (!response.ok) throw new Error("Upload failed");
-
-                        const data = await response.json();
-                        const currentGallery = form.watch("galleryImages") || [];
-                        form.setValue("galleryImages", [...currentGallery, ...data.urls]);
-                        toast({
-                          title: "Success",
-                          description: `${files.length} image${files.length > 1 ? "s" : ""} uploaded successfully`,
-                        });
-                        
-                        // Reset file input
-                        e.target.value = "";
-                      } catch (error) {
-                        toast({
-                          title: "Error",
-                          description: "Failed to upload images",
-                          variant: "destructive",
-                        });
-                      } finally {
-                        setIsUploading(false);
-                      }
-                    }}
-                  />
-                  <div className="text-center">
-                    <Upload className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Add multiple product images to gallery
-                    </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={isUploading}
-                      onClick={() => document.getElementById("gallery-images-upload")?.click()}
-                      data-testid="button-upload-gallery"
-                    >
-                      {isUploading ? (
-                        <>
-                          <Upload className="h-4 w-4 mr-2 animate-pulse" />
-                          Uploading...
-                        </>
-                      ) : (
-                        <>
-                          <Upload className="h-4 w-4 mr-2" />
-                          Upload Images
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-
-                {form.watch("galleryImages") && form.watch("galleryImages")!.length > 0 && (
-                  <div className="grid grid-cols-3 gap-3">
-                    {form.watch("galleryImages")!.map((imageUrl, index) => (
-                      <div
-                        key={index}
-                        className="relative aspect-square rounded-lg border overflow-hidden group"
-                        data-testid={`gallery-image-${index}`}
-                      >
-                        <img
-                          src={imageUrl}
-                          alt={`Gallery ${index + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => {
-                              const currentGallery = form.watch("galleryImages") || [];
-                              form.setValue(
-                                "galleryImages",
-                                currentGallery.filter((_, i) => i !== index)
-                              );
-                            }}
-                            data-testid={`button-remove-gallery-${index}`}
-                          >
-                            <X className="h-4 w-4 mr-1" />
-                            Remove
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="space-y-0.5">
-                  <Label htmlFor="isFeatured">Featured Product</Label>
-                  <p className="text-sm text-muted-foreground">Mark this product as featured</p>
-                </div>
-                <Switch
-                  id="isFeatured"
-                  checked={form.watch("isFeatured") || false}
-                  onCheckedChange={(checked) => form.setValue("isFeatured", checked)}
-                  data-testid="switch-featured"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Launch Date</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !form.watch("launchDate") && "text-muted-foreground"
-                      )}
-                      data-testid="button-launch-date"
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {form.watch("launchDate") ? (
-                        format(new Date(form.watch("launchDate")!), "PPP")
-                      ) : (
-                        <span>Pick a date</span>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={form.watch("launchDate") ? new Date(form.watch("launchDate")!) : undefined}
-                      onSelect={(date) => form.setValue("launchDate", date)}
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="rating">Rating</Label>
-                <Input
-                  id="rating"
-                  {...form.register("rating")}
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="5"
-                  placeholder="0.0 - 5.0"
-                  data-testid="input-rating"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Tags</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    placeholder="Add a tag..."
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addTag();
-                      }
-                    }}
-                    data-testid="input-tag"
-                  />
-                  <Button type="button" variant="outline" onClick={addTag} data-testid="button-add-tag">
-                    Add
-                  </Button>
-                </div>
-                {form.watch("tags") && form.watch("tags")!.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {form.watch("tags")!.map((tag, index) => (
-                      <Badge key={index} variant="secondary" className="pl-3 pr-1">
-                        {tag}
-                        <button
-                          type="button"
-                          onClick={() => removeTag(index)}
-                          className="ml-2 rounded-full hover:bg-muted p-0.5"
-                          data-testid={`button-remove-tag-${index}`}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
               </div>
             </TabsContent>
           </Tabs>

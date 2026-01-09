@@ -16,7 +16,7 @@ export const products = pgTable("products", {
   size: varchar("size", { length: 50 }).notNull(),
   fabric: varchar("fabric", { length: 100 }),
   pattern: varchar("pattern", { length: 100 }),
-  gender: varchar("gender", { length: 20 }).notNull(),
+  gender: varchar("gender", { length: 20 }),
 
   price: numeric("price", { precision: 10, scale: 2 }).notNull(),
   costPrice: numeric("cost_price", { precision: 10, scale: 2 }),
@@ -41,7 +41,7 @@ export const insertProductSchema = createInsertSchema(products, {
   brand: z.string().min(1, "Brand is required"),
   color: z.string().min(1, "Color is required"),
   size: z.string().min(1, "Size is required"),
-  gender: z.string().min(1, "Gender is required"),
+
   price: z.string().min(1, "Price is required"),
   stockQuantity: z.number().int().min(0, "Stock quantity must be 0 or greater"),
   productImage: z.string().optional(),
@@ -54,6 +54,7 @@ export const insertProductSchema = createInsertSchema(products, {
   description: z.string().transform(val => val === "" ? null : val).nullable().optional(),
   tags: z.array(z.string()).optional().transform(val => val && val.length > 0 ? JSON.stringify(val) : null).nullable(),
   launchDate: z.date().optional().transform(val => val || null).nullable(),
+  gender: z.string().transform(val => val === "" ? null : val).nullable().optional(),
 }).omit({ id: true, createdAt: true });
 
 export type InsertProduct = z.infer<typeof insertProductSchema>;

@@ -1,6 +1,8 @@
 
 import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
 
 /* ---------------------- PRODUCTS TABLE ---------------------- */
 export const products = sqliteTable("products", {
@@ -15,7 +17,7 @@ export const products = sqliteTable("products", {
   size: text("size").notNull(),
   fabric: text("fabric"),
   pattern: text("pattern"),
-  gender: text("gender").notNull(),
+  gender: text("gender"),
 
   price: real("price").notNull(),
   costPrice: real("cost_price"),
@@ -32,6 +34,32 @@ export const products = sqliteTable("products", {
 
   createdAt: integer("created_at", { mode: 'timestamp' }).default(sql`(strftime('%s', 'now'))`),
 });
+
+export const insertProductSchema = createInsertSchema(products, {
+  productName: z.string().min(1, "Product name is required"),
+  sku: z.string().min(1, "SKU is required"),
+  category: z.string().min(1, "Category is required"),
+  brand: z.string().min(1, "Brand is required"),
+  color: z.string().min(1, "Color is required"),
+  size: z.string().min(1, "Size is required"),
+
+  price: z.string().min(1, "Price is required"),
+  stockQuantity: z.number().int().min(0, "Stock quantity must be 0 or greater"),
+  productImage: z.string().optional(),
+  galleryImages: z.array(z.string()).optional().transform(val => val && val.length > 0 ? JSON.stringify(val) : null).nullable(),
+  rating: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+  costPrice: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+  warehouse: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+  fabric: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+  pattern: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+  description: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+  tags: z.array(z.string()).optional().transform(val => val && val.length > 0 ? JSON.stringify(val) : null).nullable(),
+  launchDate: z.date().optional().transform(val => val || null).nullable(),
+  gender: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+}).omit({ id: true, createdAt: true });
+
+export type InsertProduct = z.infer<typeof insertProductSchema>;
+export type Product = typeof products.$inferSelect;
 
 /* ---------------------- ORDERS TABLE ---------------------- */
 export const orders = sqliteTable("orders", {
