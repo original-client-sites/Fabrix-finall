@@ -60,6 +60,7 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [discountMethod, setDiscountMethod] = useState<'none' | 'percentage' | 'amount' | 'total'>('none');
   const { toast } = useToast();
 
   // Auto-add scanned product
@@ -82,6 +83,9 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
       status: "pending",
       paymentMethod: undefined, // Initialize paymentMethod
       notes: "",
+      subTotal: "0",
+      discountPercentage: "",
+      discountAmount: "",
       totalAmount: "0",
     },
   });
@@ -182,8 +186,25 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
     setOrderItems(orderItems.filter((item) => item.productId !== productId));
   };
 
-  const calculateTotal = () => {
+  const calculateSubTotal = () => {
     return orderItems.reduce((sum, item) => sum + parseFloat(item.subtotal), 0).toFixed(2);
+  };
+
+  const calculateTotal = () => {
+    const subTotal = parseFloat(calculateSubTotal());
+    
+    if (discountMethod === 'percentage') {
+      const discountPercentage = parseFloat(form.watch('discountPercentage') || '0');
+      return (subTotal - (subTotal * discountPercentage / 100)).toFixed(2);
+    } else if (discountMethod === 'amount') {
+      const discountAmount = parseFloat(form.watch('discountAmount') || '0');
+      return (subTotal - discountAmount).toFixed(2);
+    } else if (discountMethod === 'total') {
+      // When setting total directly, we don't recalculate
+      return form.watch('totalAmount') || subTotal.toFixed(2);
+    } else {
+      return subTotal.toFixed(2);
+    }
   };
 
   const onSubmit = (data: InsertOrder) => {
@@ -196,10 +217,29 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
       return;
     }
 
-    const total = calculateTotal();
+    const subTotal = parseFloat(calculateSubTotal());
+    const finalTotal = parseFloat(calculateTotal());
+    
+    let discountAmount = 0;
+    let discountPercentage = 0;
+    
+    if (discountMethod === 'percentage') {
+      discountPercentage = parseFloat(data.discountPercentage || '0');
+      discountAmount = (subTotal * discountPercentage) / 100;
+    } else if (discountMethod === 'amount') {
+      discountAmount = parseFloat(data.discountAmount || '0');
+      discountPercentage = (discountAmount / subTotal) * 100;
+    } else if (discountMethod === 'total') {
+      discountAmount = subTotal - finalTotal;
+      discountPercentage = (discountAmount / subTotal) * 100;
+    }
+    
     createMutation.mutate({
       ...data,
-      totalAmount: total,
+      subTotal: subTotal.toFixed(2),
+      discountAmount: discountAmount.toFixed(2),
+      discountPercentage: discountPercentage.toFixed(2),
+      totalAmount: finalTotal.toFixed(2),
       items: orderItems,
     });
   };
@@ -296,6 +336,126 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                 {form.formState.errors.paymentMethod && (
                   <p className="text-sm text-destructive">{form.formState.errors.paymentMethod.message}</p>
                 )}
+              </div>
+
+              {/* Discount Section */}
+              <div className="col-span-2 space-y-4 mt-4">
+                <h3 className="font-semibold text-lg">Discount Options</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <Label>Discount Type</Label>
+                    <Select
+                      value={discountMethod}
+                      onValueChange={(value: 'none' | 'percentage' | 'amount' | 'total') => {
+                        setDiscountMethod(value);
+                        if (value === 'none') {
+                          form.setValue('discountPercentage', '');
+                          form.setValue('discountAmount', '');
+                          form.setValue('totalAmount', calculateSubTotal());
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select discount type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No Discount</SelectItem>
+                        <SelectItem value="percentage">By Percentage</SelectItem>
+                        <SelectItem value="amount">By Fixed Amount</SelectItem>
+                        <SelectItem value="total">Set Total Amount</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="subTotal">Sub Total</Label>
+                    <Input
+                      id="subTotal"
+                      readOnly
+                      value={`$${calculateSubTotal()}`}
+                      placeholder="Sub Total"
+                    />
+                  </div>
+                  
+                  {discountMethod === 'percentage' && (
+                    <div>
+                      <Label htmlFor="discountPercentage">Discount %</Label>
+                      <Input
+                        id="discountPercentage"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        {...form.register("discountPercentage", {
+                          onChange: (e) => {
+                            const value = e.target.value;
+                            form.setValue('discountPercentage', value);
+                            if (value) {
+                              const subTotal = parseFloat(calculateSubTotal());
+                              const discountAmount = (subTotal * parseFloat(value)) / 100;
+                              form.setValue('discountAmount', discountAmount.toFixed(2));
+                              form.setValue('totalAmount', (subTotal - discountAmount).toFixed(2));
+                            }
+                          }
+                        })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  )}
+                  
+                  {discountMethod === 'amount' && (
+                    <div>
+                      <Label htmlFor="discountAmount">Discount Amount</Label>
+                      <Input
+                        id="discountAmount"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max={parseFloat(calculateSubTotal())}
+                        {...form.register("discountAmount", {
+                          onChange: (e) => {
+                            const value = e.target.value;
+                            form.setValue('discountAmount', value);
+                            if (value) {
+                              const subTotal = parseFloat(calculateSubTotal());
+                              const discountPercent = (parseFloat(value) / subTotal) * 100;
+                              form.setValue('discountPercentage', discountPercent.toFixed(2));
+                              form.setValue('totalAmount', (subTotal - parseFloat(value)).toFixed(2));
+                            }
+                          }
+                        })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  )}
+                  
+                  {discountMethod === 'total' && (
+                    <div>
+                      <Label htmlFor="totalAmount">Final Total</Label>
+                      <Input
+                        id="totalAmount"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max={parseFloat(calculateSubTotal())}
+                        {...form.register("totalAmount", {
+                          onChange: (e) => {
+                            const value = e.target.value;
+                            form.setValue('totalAmount', value);
+                            if (value) {
+                              const subTotal = parseFloat(calculateSubTotal());
+                              const discountAmount = subTotal - parseFloat(value);
+                              const discountPercent = (discountAmount / subTotal) * 100;
+                              form.setValue('discountAmount', discountAmount.toFixed(2));
+                              form.setValue('discountPercentage', discountPercent.toFixed(2));
+                            }
+                          }
+                        })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -430,10 +590,26 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                     ))}
                   </div>
                   <div className="p-4 bg-muted/50 border-t flex items-center justify-between">
-                    <p className="font-semibold text-lg">Total</p>
-                    <p className="font-bold text-2xl" data-testid="text-order-total">
-                      ${calculateTotal()}
-                    </p>
+                    <div>
+                      <p className="font-semibold text-lg">Subtotal</p>
+                      <p className="text-sm text-muted-foreground">${calculateSubTotal()}</p>
+                    </div>
+                    {discountMethod !== 'none' && (
+                      <div className="text-right">
+                        <p className="font-semibold text-lg">Discount</p>
+                        <p className="text-sm text-muted-foreground">
+                          {discountMethod === 'percentage' && `${form.watch('discountPercentage')}% off`}
+                          {discountMethod === 'amount' && `$${form.watch('discountAmount')} off`}
+                          {discountMethod === 'total' && `$${(parseFloat(calculateSubTotal()) - parseFloat(form.watch('totalAmount') || '0')).toFixed(2)} saved`}
+                        </p>
+                      </div>
+                    )}
+                    <div className="text-right">
+                      <p className="font-semibold text-lg">Total</p>
+                      <p className="font-bold text-2xl" data-testid="text-order-total">
+                        ${calculateTotal()}
+                      </p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>

@@ -36,6 +36,20 @@
       "when": 1767958463381,
       "tag": "0005_shallow_menace",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1767962529625,
+      "tag": "0006_add_discount_fields_to_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1767964196478,
+      "tag": "0007_flawless_chronomancer",
+      "breakpoints": true
     }
   ]
 }

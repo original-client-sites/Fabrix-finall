@@ -226,10 +226,44 @@ export class DatabaseStorage implements IStorage {
     const id = randomUUID();
     const orderNumber = `ORD-${Date.now()}`;
 
+    // Calculate subtotal from items
+    const subtotal = items.reduce((sum, item) => sum + parseFloat(item.subtotal), 0);
+    
+    // Handle discount calculation
+    let finalTotal = subtotal;
+    let discountAmount = 0;
+    let discountPercentage = 0;
+    
+    // Apply discount based on the provided values
+    if (orderData.discountPercentage !== undefined && orderData.discountPercentage !== null && orderData.discountPercentage !== '') {
+      discountPercentage = parseFloat(orderData.discountPercentage);
+      discountAmount = (subtotal * discountPercentage) / 100;
+      finalTotal = subtotal - discountAmount;
+    } else if (orderData.discountAmount !== undefined && orderData.discountAmount !== null && orderData.discountAmount !== '') {
+      discountAmount = parseFloat(orderData.discountAmount);
+      finalTotal = subtotal - discountAmount;
+      discountPercentage = (discountAmount / subtotal) * 100;
+    } else if (orderData.totalAmount !== undefined && parseFloat(orderData.totalAmount) < subtotal) {
+      // If totalAmount is provided and less than subtotal, calculate discount from it
+      finalTotal = parseFloat(orderData.totalAmount);
+      discountAmount = subtotal - finalTotal;
+      discountPercentage = (discountAmount / subtotal) * 100;
+    } else {
+      // If no discount is applied, set total to subtotal
+      finalTotal = subtotal;
+    }
+    
+    // Ensure finalTotal is not negative
+    finalTotal = Math.max(0, finalTotal);
+
     await db.insert(orders).values({
       ...orderData,
       id,
       orderNumber,
+      subTotal: subtotal.toFixed(2),
+      discountAmount: discountAmount.toFixed(2),
+      discountPercentage: discountPercentage.toFixed(2),
+      totalAmount: finalTotal.toFixed(2),
     });
 
     const orderResult = await db.select().from(orders).where(eq(orders.id, id));
@@ -250,11 +284,9 @@ export class DatabaseStorage implements IStorage {
       const product = await this.getProduct(item.productId);
       if (product) {
         const newStockQuantity = product.stockQuantity - item.quantity;
-        await this.updateProduct(item.productId, {
-          ...product,
-          stockQuantity: newStockQuantity,
-          isFeatured: product.isFeatured ?? false,
-        });
+        await db.update(products)
+          .set({ stockQuantity: newStockQuantity })
+          .where(eq(products.id, item.productId));
 
         await this.createStockMovement({
           productId: item.productId,
@@ -317,24 +349,32 @@ export class DatabaseStorage implements IStorage {
     const movementResult = await db.select().from(stockMovements).where(eq(stockMovements.id, id));
     const movement = movementResult[0];
 
-    const product = await this.getProduct(insertMovement.productId);
-    if (product) {
-      let newQuantity = product.stockQuantity;
-      if (insertMovement.type === "in") {
-        newQuantity += insertMovement.quantity;
-      } else if (insertMovement.type === "out") {
-        newQuantity -= insertMovement.quantity;
-      } else if (insertMovement.type === "adjustment") {
-        newQuantity = insertMovement.quantity;
-      }
+    // Use atomic update to avoid race conditions
+    if (insertMovement.type === "in") {
+      await db.update(products)
+        .set({
+          stockQuantity: sql`${products.stockQuantity} + ${insertMovement.quantity}`,
+        })
+        .where(eq(products.id, insertMovement.productId));
+    } else if (insertMovement.type === "out") {
+      await db.update(products)
+        .set({
+          stockQuantity: sql`${products.stockQuantity} - ${insertMovement.quantity}`,
+        })
+        .where(eq(products.id, insertMovement.productId));
+    } else if (insertMovement.type === "adjustment") {
+      await db.update(products)
+        .set({
+          stockQuantity: insertMovement.quantity,
+        })
+        .where(eq(products.id, insertMovement.productId));
+    }
 
-      const finalQuantity = Math.max(0, newQuantity);
-      await this.updateProduct(insertMovement.productId, {
-        ...product,
-        stockQuantity: finalQuantity,
-        isFeatured: product.isFeatured ?? false,
-      });
-
+    // Get updated product after atomic update
+    const updatedProduct = await this.getProduct(insertMovement.productId);
+    if (updatedProduct) {
+      const finalQuantity = Math.max(0, updatedProduct.stockQuantity);
+      
       const stats = await this.getStockStatsByProduct(insertMovement.productId);
       if (stats) {
         if (insertMovement.reason === 'purchase') {
@@ -427,11 +467,10 @@ export class DatabaseStorage implements IStorage {
 
       const product = await this.getProduct(item.productId);
       if (product) {
-        await this.updateProduct(item.productId, {
-          ...product,
-          stockQuantity: product.stockQuantity + item.quantity,
-          isFeatured: product.isFeatured ?? false,
-        });
+        const newStockQuantity = product.stockQuantity + item.quantity;
+        await db.update(products)
+          .set({ stockQuantity: newStockQuantity })
+          .where(eq(products.id, item.productId));
 
         const stats = await this.getStockStatsByProduct(item.productId);
         if (stats) {
@@ -589,7 +628,6 @@ export class DatabaseStorage implements IStorage {
           sold: 0,
           returned: 0,
           purchased: 0,
-          initialStock: product.stockQuantity,
         });
       } else {
         await db
@@ -632,7 +670,6 @@ export class DatabaseStorage implements IStorage {
       sold: 0,
       returned: 0,
       purchased: 0,
-      initialStock: product.stockQuantity,
     });
 
     const statsResult = await db.select().from(stockStats).where(eq(stockStats.id, id));

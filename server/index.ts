@@ -5,7 +5,6 @@ dotenv.config();
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { dbSync } from "./sync-service";
 
 const app = express();
 
@@ -52,19 +51,19 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Start database sync if both databases are available
-  dbSync.startPeriodicSync(5); // Sync every 5 minutes
+  // Database sync service has been deprecated
+  // The application now uses a single database approach
   
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
-
+  
+    console.error(err);
     res.status(status).json({ message });
-    throw err;
   });
-
+  
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes

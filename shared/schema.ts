@@ -70,6 +70,9 @@ export const orders = pgTable("orders", {
   status: varchar("status", { length: 50 }).default("pending").notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).default("cash").notNull(),
   notes: text("notes"),
+  subTotal: numeric("sub_total", { precision: 10, scale: 2 }),
+  discountPercentage: numeric("discount_percentage", { precision: 5, scale: 2 }),
+  discountAmount: numeric("discount_amount", { precision: 10, scale: 2 }),
   totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
@@ -79,6 +82,9 @@ export const insertOrderSchema = createInsertSchema(orders, {
   customerEmail: z.string().email().optional().or(z.literal("")),
   status: z.enum(["pending", "processing", "shipped", "delivered", "cancelled"]),
   paymentMethod: z.enum(["cash", "credit_card", "debit_card", "upi", "bank_transfer", "store_credit", "mixed"]),
+  subTotal: z.string().optional().transform(val => val === "" ? null : val).nullable(),
+  discountPercentage: z.string().optional().transform(val => val === "" ? null : val).nullable(),
+  discountAmount: z.string().optional().transform(val => val === "" ? null : val).nullable(),
   totalAmount: z.string().min(1, "Total amount is required"),
 }).omit({ id: true, createdAt: true, orderNumber: true });
 
