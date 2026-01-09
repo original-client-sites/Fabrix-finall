@@ -236,7 +236,7 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="brand">Brand *</Label>
+                  <Label htmlFor="brand">Brand</Label>
                   <Input
                     id="brand"
                     {...form.register("brand")}
@@ -251,7 +251,7 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="color">Color *</Label>
+                  <Label htmlFor="color">Color</Label>
                   <Input
                     id="color"
                     {...form.register("color")}

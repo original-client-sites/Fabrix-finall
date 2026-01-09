@@ -10,10 +10,10 @@ export const products = sqliteTable("products", {
   productName: text("product_name").notNull(),
   sku: text("sku").notNull(),
   category: text("category").notNull(),
-  brand: text("brand").notNull(),
+  brand: text("brand"),
   description: text("description"),
 
-  color: text("color").notNull(),
+  color: text("color"),
   size: text("size").notNull(),
   fabric: text("fabric"),
   pattern: text("pattern"),
@@ -39,8 +39,8 @@ export const insertProductSchema = createInsertSchema(products, {
   productName: z.string().min(1, "Product name is required"),
   sku: z.string().min(1, "SKU is required"),
   category: z.string().min(1, "Category is required"),
-  brand: z.string().min(1, "Brand is required"),
-  color: z.string().min(1, "Color is required"),
+  brand: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+  color: z.string().transform(val => val === "" ? null : val).nullable().optional(),
   size: z.string().min(1, "Size is required"),
 
   price: z.string().min(1, "Price is required"),

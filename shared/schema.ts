@@ -9,10 +9,10 @@ export const products = pgTable("products", {
   productName: varchar("product_name", { length: 255 }).notNull(),
   sku: varchar("sku", { length: 100 }).notNull(),
   category: varchar("category", { length: 100 }).notNull(),
-  brand: varchar("brand", { length: 100 }).notNull(),
+  brand: varchar("brand", { length: 100 }),
   description: text("description"),
 
-  color: varchar("color", { length: 50 }).notNull(),
+  color: varchar("color", { length: 50 }),
   size: varchar("size", { length: 50 }).notNull(),
   fabric: varchar("fabric", { length: 100 }),
   pattern: varchar("pattern", { length: 100 }),
@@ -38,8 +38,8 @@ export const insertProductSchema = createInsertSchema(products, {
   productName: z.string().min(1, "Product name is required"),
   sku: z.string().min(1, "SKU is required"),
   category: z.string().min(1, "Category is required"),
-  brand: z.string().min(1, "Brand is required"),
-  color: z.string().min(1, "Color is required"),
+  brand: z.string().transform(val => val === "" ? null : val).nullable().optional(),
+  color: z.string().transform(val => val === "" ? null : val).nullable().optional(),
   size: z.string().min(1, "Size is required"),
 
   price: z.string().min(1, "Price is required"),
