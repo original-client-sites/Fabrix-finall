@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { DiscountCode } from "@shared/schema";
 import { format } from "date-fns";
+import { formatInIST } from "@/lib/utils";
 import { CreateOrderDialog } from "@/components/create-order-dialog";
 import { UseCreditDialog } from "@/components/use-credit-dialog";
 
@@ -154,12 +155,12 @@ export default function StoreCredits() {
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {code.createdAt
-                                ? format(new Date(code.createdAt), "MMM dd, yyyy")
+                                ? formatInIST(new Date(code.createdAt), "MMM dd, yyyy")
                                 : "-"}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {code.expiresAt
-                                ? format(new Date(code.expiresAt), "MMM dd, yyyy")
+                                ? formatInIST(new Date(code.expiresAt), "MMM dd, yyyy")
                                 : "No expiry"}
                             </TableCell>
                             <TableCell className="text-right">
@@ -235,12 +236,12 @@ export default function StoreCredits() {
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {code.createdAt
-                                ? format(new Date(code.createdAt), "MMM dd, yyyy")
+                                ? formatInIST(new Date(code.createdAt), "MMM dd, yyyy")
                                 : "-"}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {code.usedAt
-                                ? format(new Date(code.usedAt), "MMM dd, yyyy")
+                                ? formatInIST(new Date(code.usedAt), "MMM dd, yyyy")
                                 : "-"}
                             </TableCell>
                             <TableCell className="text-right">

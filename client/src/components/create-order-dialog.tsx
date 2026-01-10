@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { X, Plus, Search, Package, Scan, Clock } from "lucide-react";
 import { format } from "date-fns";
+import { formatInIST } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -208,10 +209,23 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
   };
 
   const onSubmit = (data: InsertOrder) => {
+    console.log("Form data on submit:", data);
+    console.log("Payment method from form state:", form.getValues("paymentMethod"));
+    
     if (orderItems.length === 0) {
       toast({
         title: "Error",
         description: "Please add at least one product to the order",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Validate that a payment method is selected
+    if (!data.paymentMethod || data.paymentMethod.trim() === "") {
+      toast({
+        title: "Error",
+        description: "Please select a payment method",
         variant: "destructive",
       });
       return;
@@ -241,7 +255,10 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
       discountPercentage: discountPercentage.toFixed(2),
       totalAmount: finalTotal.toFixed(2),
       items: orderItems,
-    });
+    };
+    
+    console.log("DEBUG: Final order data being sent:", orderData);
+    createMutation.mutate(orderData);
   };
 
   return (
@@ -318,7 +335,10 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                 <Label htmlFor="paymentMethod">Payment Method</Label>
                 <Select
                   value={form.watch("paymentMethod") || ""}
-                  onValueChange={(value) => form.setValue("paymentMethod", value as InsertOrder["paymentMethod"])}
+                  onValueChange={(value) => {
+                    console.log("Payment method changed to:", value);
+                    form.setValue("paymentMethod", value as InsertOrder["paymentMethod"]);
+                  }}
                 >
                   <SelectTrigger id="paymentMethod" data-testid="select-payment-method">
                     <SelectValue placeholder="Select payment method" />
@@ -630,7 +650,7 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
           <div className="border-t pt-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
               <Clock className="h-4 w-4" />
-              <span>Order Date: {format(new Date(), "MMM dd, yyyy HH:mm:ss")}</span>
+              <span>Order Date: {formatInIST(new Date(), "MMM dd, yyyy HH:mm:ss")}</span>
             </div>
             <div className="flex justify-end gap-3">
               <Button

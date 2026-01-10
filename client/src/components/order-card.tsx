@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
+import { formatInIST } from "@/lib/utils";
 import { Calendar, Package, User, Mail, Phone, Download, RotateCcw, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -129,7 +130,7 @@ export function OrderCard({ order }: OrderCardProps) {
                   <div className="flex items-center gap-1.5">
                     <Calendar className="h-3.5 w-3.5" />
                     <span data-testid={`text-date-${order.id}`}>
-                      {format(new Date(order.createdAt), "MMM dd, yyyy")}
+                      {order.createdAt ? formatInIST(new Date(order.createdAt), "MMM dd, yyyy") : 'N/A'}
                     </span>
                   </div>
                 )}
@@ -223,7 +224,7 @@ export function OrderCard({ order }: OrderCardProps) {
                       </Badge>
                     </div>
                     <span className="text-xs text-muted-foreground">
-                      {ret.createdAt ? format(new Date(ret.createdAt), "MMM dd, yyyy") : 'N/A'}
+                      {ret.createdAt ? formatInIST(new Date(ret.createdAt), "MMM dd, yyyy") : 'N/A'}
                     </span>
                   </div>
                   <div className="space-y-1 text-sm">

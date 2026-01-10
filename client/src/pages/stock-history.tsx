@@ -24,6 +24,7 @@ import { QRScannerDialog } from "@/components/qr-scanner-dialog";
 import { StockMovementDialog } from "@/components/stock-movement-dialog";
 import type { StockMovement, Product } from "@shared/schema";
 import { format } from "date-fns";
+import { formatInIST } from "@/lib/utils";
 
 type SortField = "productName" | "sku" | "category" | "available" | "sold" | "returned" | "purchased" | "initialStock";
 type SortOrder = "asc" | "desc";
@@ -680,7 +681,7 @@ export default function StockHistory() {
                                 <div>
                                   <p className="text-sm text-muted-foreground">Date</p>
                                   <p className="font-semibold">
-                                    {order.createdAt && format(new Date(order.createdAt), "MMM dd, yyyy HH:mm")}
+                                    {order.createdAt && formatInIST(new Date(order.createdAt), "MMM dd, yyyy HH:mm")}
                                   </p>
                                 </div>
                               </div>
@@ -731,7 +732,7 @@ export default function StockHistory() {
                                       <div>
                                         <p className="text-sm text-muted-foreground">Date</p>
                                         <p className="font-semibold">
-                                          {ret.createdAt && format(new Date(ret.createdAt), "MMM dd, yyyy HH:mm")}
+                                          {ret.createdAt && formatInIST(new Date(ret.createdAt), "MMM dd, yyyy HH:mm")}
                                         </p>
                                       </div>
                                     </div>
@@ -782,7 +783,7 @@ export default function StockHistory() {
                               <div>
                                 <p className="text-sm text-muted-foreground">Date</p>
                                 <p className="font-semibold">
-                                  {returnData.createdAt && format(new Date(returnData.createdAt), "MMM dd, yyyy HH:mm")}
+                                  {returnData.createdAt && formatInIST(new Date(returnData.createdAt), "MMM dd, yyyy HH:mm")}
                                 </p>
                               </div>
                             </div>
