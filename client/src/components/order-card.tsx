@@ -142,6 +142,12 @@ export function OrderCard({ order }: OrderCardProps) {
             <div>
               <p className="text-sm text-muted-foreground mb-1">Total Amount</p>
               <p className="text-2xl font-bold" data-testid={`text-total-${order.id}`}>${order.totalAmount}</p>
+              {order.discountAmount && parseFloat(order.discountAmount) > 0 && (
+                <div className="text-sm mt-1">
+                  <p className="text-muted-foreground line-through">Subtotal: ${order.subTotal}</p>
+                  <p className="text-green-600 font-medium">Discount: -${order.discountAmount}{order.discountPercentage && parseFloat(order.discountPercentage) > 0 && ` (${order.discountPercentage}%)`}</p>
+                </div>
+              )}
             </div>
             <div className="w-px h-12 bg-border hidden sm:block" />
             <div>

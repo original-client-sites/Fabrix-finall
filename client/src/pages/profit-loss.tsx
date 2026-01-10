@@ -26,7 +26,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer } from "recharts";
-import type { Product, OrderWithItems, ReturnWithItems, StockMovement, Account } from "@shared/schema";
+import type { Product, OrderWithItems, ReturnWithItems, StockMovement, Account } from "@shared/schema.mysql";
 import { format, startOfDay, startOfHour, startOfMonth, startOfYear, subDays, subMonths, subYears } from "date-fns";
 import { formatInIST } from "@/lib/utils";
 
@@ -202,14 +202,14 @@ export default function ProfitLoss() {
 
   // Payment method statistics
   const paymentMethodStats = useMemo(() => {
-    const stats: Record<string, { revenue: number; count: number }> = {
-      cash: { revenue: 0, count: 0 },
-      credit_card: { revenue: 0, count: 0 },
-      debit_card: { revenue: 0, count: 0 },
-      upi: { revenue: 0, count: 0 },
-      bank_transfer: { revenue: 0, count: 0 },
-      store_credit: { revenue: 0, count: 0 },
-      mixed: { revenue: 0, count: 0 },
+    const stats: Record<string, { revenue: number; count: number; refunds: number; refundAmount: number; additionalPayments: number; additionalPaymentAmount: number }> = {
+      cash: { revenue: 0, count: 0, refunds: 0, refundAmount: 0, additionalPayments: 0, additionalPaymentAmount: 0 },
+      credit_card: { revenue: 0, count: 0, refunds: 0, refundAmount: 0, additionalPayments: 0, additionalPaymentAmount: 0 },
+      debit_card: { revenue: 0, count: 0, refunds: 0, refundAmount: 0, additionalPayments: 0, additionalPaymentAmount: 0 },
+      upi: { revenue: 0, count: 0, refunds: 0, refundAmount: 0, additionalPayments: 0, additionalPaymentAmount: 0 },
+      bank_transfer: { revenue: 0, count: 0, refunds: 0, refundAmount: 0, additionalPayments: 0, additionalPaymentAmount: 0 },
+      store_credit: { revenue: 0, count: 0, refunds: 0, refundAmount: 0, additionalPayments: 0, additionalPaymentAmount: 0 },
+      mixed: { revenue: 0, count: 0, refunds: 0, refundAmount: 0, additionalPayments: 0, additionalPaymentAmount: 0 },
     };
 
     orders.forEach(order => {
@@ -225,11 +225,15 @@ export default function ProfitLoss() {
       if (ret.refundAmount) {
         const amount = parseFloat(ret.refundAmount.toString());
         stats[method].revenue -= amount;
+        stats[method].refunds += 1;
+        stats[method].refundAmount += amount;
       }
       // Add additional payments to revenue
       if (ret.additionalPayment) {
         const amount = parseFloat(ret.additionalPayment.toString());
         stats[method].revenue += amount;
+        stats[method].additionalPayments += 1;
+        stats[method].additionalPaymentAmount += amount;
       }
     });
 
@@ -238,10 +242,96 @@ export default function ProfitLoss() {
         method: method.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
         revenue: data.revenue,
         count: data.count,
+        refunds: data.refunds,
+        refundAmount: data.refundAmount,
+        additionalPayments: data.additionalPayments,
+        additionalPaymentAmount: data.additionalPaymentAmount,
+        netRevenue: data.revenue + data.refundAmount - data.additionalPaymentAmount
       }))
-      .filter(item => item.count > 0 || item.revenue !== 0)
+      .filter(item => item.count > 0 || item.refundAmount !== 0 || item.additionalPaymentAmount !== 0)
       .sort((a, b) => b.revenue - a.revenue);
   }, [orders, returns]);
+
+  // Today's earnings when time range is daily
+  const todaysEarnings = useMemo(() => {
+    if (timeRange !== 'daily') return null;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const todaysOrders = orders.filter(order => {
+      const orderDate = new Date(order.createdAt!);
+      orderDate.setHours(0, 0, 0, 0);
+      return orderDate.getTime() === today.getTime();
+    });
+    
+    const todaysReturns = returns.filter(ret => {
+      const returnDate = new Date(ret.createdAt!);
+      returnDate.setHours(0, 0, 0, 0);
+      return returnDate.getTime() === today.getTime();
+    });
+    
+    const todaysAccounts = accounts.filter(acc => {
+      const txDate = new Date(acc.transactionDate!);
+      txDate.setHours(0, 0, 0, 0);
+      return txDate.getTime() === today.getTime();
+    });
+    
+    // Calculate today's revenue from orders
+    const revenue = todaysOrders.reduce((sum, order) => {
+      return sum + parseFloat(order.totalAmount.toString());
+    }, 0);
+    
+    // Calculate today's refunds
+    const refundAmount = todaysReturns.reduce((sum, ret) => {
+      return sum + (ret.refundAmount ? parseFloat(ret.refundAmount.toString()) : 0);
+    }, 0);
+    
+    // Calculate today's costs from purchase accounts
+    const cost = todaysAccounts.filter(a => a.transactionType === 'purchase').reduce((sum, acc) => {
+      return sum + parseFloat(acc.cost.toString());
+    }, 0);
+    
+    // Calculate today's profit
+    const profit = revenue - refundAmount - cost;
+    
+    // Payment methods breakdown for today
+    const paymentMethodBreakdown: Record<string, { revenue: number; count: number; refunds: number; refundAmount: number }> = {
+      cash: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      credit_card: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      debit_card: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      upi: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      bank_transfer: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      store_credit: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      mixed: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+    };
+    
+    todaysOrders.forEach(order => {
+      const method = order.paymentMethod || 'cash';
+      const amount = parseFloat(order.totalAmount.toString());
+      paymentMethodBreakdown[method].revenue += amount;
+      paymentMethodBreakdown[method].count += 1;
+    });
+    
+    todaysReturns.forEach(ret => {
+      const method = ret.paymentMethod || 'cash';
+      if (ret.refundAmount) {
+        const amount = parseFloat(ret.refundAmount.toString());
+        paymentMethodBreakdown[method].refunds += 1;
+        paymentMethodBreakdown[method].refundAmount += amount;
+      }
+    });
+    
+    return {
+      revenue,
+      refundAmount,
+      cost,
+      profit,
+      paymentMethodBreakdown,
+      orderCount: todaysOrders.length,
+      returnCount: todaysReturns.length,
+    };
+  }, [timeRange, orders, returns, accounts]);
 
   // Calculate overall statistics
   const statistics = useMemo(() => {
@@ -569,6 +659,85 @@ export default function ProfitLoss() {
             </Card>
           </div>
 
+          {/* Today's Earnings when time range is daily */}
+          {todaysEarnings && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle>Today's Earnings</CardTitle>
+                <CardDescription>Earnings for {format(new Date(), 'MMMM dd, yyyy')}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                    <p className="text-sm text-blue-600 font-medium">Total Revenue</p>
+                    <p className="text-2xl font-bold text-blue-800">${todaysEarnings.revenue.toFixed(2)}</p>
+                    <p className="text-xs text-blue-500 mt-1">from {todaysEarnings.orderCount} orders</p>
+                  </div>
+                  <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                    <p className="text-sm text-red-600 font-medium">Refunds</p>
+                    <p className="text-2xl font-bold text-red-800">${todaysEarnings.refundAmount.toFixed(2)}</p>
+                    <p className="text-xs text-red-500 mt-1">from {todaysEarnings.returnCount} returns</p>
+                  </div>
+                  <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+                    <p className="text-sm text-orange-600 font-medium">Cost</p>
+                    <p className="text-2xl font-bold text-orange-800">${todaysEarnings.cost.toFixed(2)}</p>
+                  </div>
+                  <div className={`${todaysEarnings.profit >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} p-4 rounded-lg border`}>
+                    <p className={`text-sm font-medium ${todaysEarnings.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>Net Profit/Loss</p>
+                    <p className={`text-2xl font-bold ${todaysEarnings.profit >= 0 ? 'text-green-800' : 'text-red-800'}`}>${Math.abs(todaysEarnings.profit).toFixed(2)}</p>
+                    <p className={`text-xs ${todaysEarnings.profit >= 0 ? 'text-green-500' : 'text-red-500'} mt-1`}>
+                      {todaysEarnings.profit >= 0 ? 'Profit' : 'Loss'}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="mt-6">
+                  <h4 className="font-medium mb-3">Payment Method Breakdown</h4>
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Payment Method</TableHead>
+                          <TableHead className="text-right">Sales</TableHead>
+                          <TableHead className="text-right">Revenue</TableHead>
+                          <TableHead className="text-right">Refunds</TableHead>
+                          <TableHead className="text-right">Refund Amount</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {Object.entries(todaysEarnings.paymentMethodBreakdown)
+                          .filter(([_, data]) => data.revenue > 0 || data.refundAmount > 0)
+                          .map(([method, data]) => (
+                            <TableRow key={method}>
+                              <TableCell className="font-medium">
+                                {method.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                              </TableCell>
+                              <TableCell className="text-right">{data.count}</TableCell>
+                              <TableCell className="text-right text-green-600 font-semibold">
+                                ${data.revenue.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-right">{data.refunds}</TableCell>
+                              <TableCell className="text-right text-red-600 font-semibold">
+                                ${data.refundAmount.toFixed(2)}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        }
+                        {Object.entries(todaysEarnings.paymentMethodBreakdown).filter(([_, data]) => data.revenue > 0 || data.refundAmount > 0).length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">
+                              No payment data for today
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Payment Method Statistics */}
           <Card className="mb-8">
             <CardHeader>
@@ -581,15 +750,20 @@ export default function ProfitLoss() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Payment Method</TableHead>
-                      <TableHead className="text-right">Transactions</TableHead>
-                      <TableHead className="text-right">Total Revenue</TableHead>
+                      <TableHead className="text-right">Sales</TableHead>
+                      <TableHead className="text-right">Sales Revenue</TableHead>
+                      <TableHead className="text-right">Refunds</TableHead>
+                      <TableHead className="text-right">Refund Amount</TableHead>
+                      <TableHead className="text-right">Additional Payments</TableHead>
+                      <TableHead className="text-right">Add. Payment Amount</TableHead>
+                      <TableHead className="text-right">Net Revenue</TableHead>
                       <TableHead className="text-right">% of Total</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paymentMethodStats.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                           No payment data available
                         </TableCell>
                       </TableRow>
@@ -602,8 +776,19 @@ export default function ProfitLoss() {
                           <TableRow key={item.method}>
                             <TableCell className="font-medium">{item.method}</TableCell>
                             <TableCell className="text-right">{item.count}</TableCell>
-                            <TableCell className={`text-right font-semibold ${item.revenue >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              ${Math.abs(item.revenue).toFixed(2)}
+                            <TableCell className="text-right text-green-600 font-semibold">
+                              ${item.revenue.toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right">{item.refunds}</TableCell>
+                            <TableCell className="text-right text-red-600 font-semibold">
+                              ${item.refundAmount.toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right">{item.additionalPayments}</TableCell>
+                            <TableCell className="text-right text-green-600 font-semibold">
+                              ${item.additionalPaymentAmount.toFixed(2)}
+                            </TableCell>
+                            <TableCell className={`text-right font-semibold ${item.netRevenue >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              ${item.netRevenue.toFixed(2)}
                             </TableCell>
                             <TableCell className="text-right">
                               <Badge variant={percentage >= 30 ? "default" : "secondary"}>

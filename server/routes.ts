@@ -20,7 +20,7 @@ import {
   insertReturnItemSchema,
   insertStockMovementSchema,
   insertDiscountCodeSchema,
-} from "@shared/schema";
+} from "@shared/schema.mysql";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { nanoid } from "nanoid";
