@@ -118,7 +118,7 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
     if (product.stockQuantity === 0) {
       toast({
         title: "Out of Stock",
-        description: `₹{product.productName} is currently out of stock`,
+        description: `${product.productName} is currently out of stock`,
         variant: "destructive",
       });
       return;
@@ -129,7 +129,7 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
       if (existingItem.quantity >= product.stockQuantity) {
         toast({
           title: "Stock Limit Reached",
-          description: `Only ₹{product.stockQuantity} units available for ${product.productName}`,
+          description: `Only ${product.stockQuantity} units available for ${product.productName}`,
           variant: "destructive",
         });
         return;
@@ -392,7 +392,7 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                     <Input
                       id="subTotal"
                       readOnly
-                      value={`$${calculateSubTotal()}`}
+                      value={`₹${calculateSubTotal()}`}
                       placeholder="Sub Total"
                     />
                   </div>
@@ -528,7 +528,7 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                                   <p className="font-medium truncate">{product.productName}</p>
                                   <p className="text-xs text-muted-foreground">{product.sku}</p>
                                 </div>
-                                <p className="font-semibold">${product.price}</p>
+                                <p className="font-semibold">₹{product.price}</p>
                               </div>
                             </CommandItem>
                           ))}
@@ -612,15 +612,15 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                   <div className="p-4 bg-muted/50 border-t flex items-center justify-between">
                     <div>
                       <p className="font-semibold text-lg">Subtotal</p>
-                      <p className="text-sm text-muted-foreground">${calculateSubTotal()}</p>
+                      <p className="text-sm text-muted-foreground">₹{calculateSubTotal()}</p>
                     </div>
                     {discountMethod !== 'none' && (
                       <div className="text-right">
                         <p className="font-semibold text-lg">Discount</p>
                         <p className="text-sm text-muted-foreground">
                           {discountMethod === 'percentage' && `${form.watch('discountPercentage')}% off`}
-                          {discountMethod === 'amount' && `$${form.watch('discountAmount')} off`}
-                          {discountMethod === 'total' && `$${(parseFloat(calculateSubTotal()) - parseFloat(form.watch('totalAmount') || '0')).toFixed(2)} saved`}
+                          {discountMethod === 'amount' && `₹${form.watch('discountAmount')} off`}
+                          {discountMethod === 'total' && `₹${(parseFloat(calculateSubTotal()) - parseFloat(form.watch('totalAmount') || '0')).toFixed(2)} saved`}
                         </p>
                       </div>
                     )}

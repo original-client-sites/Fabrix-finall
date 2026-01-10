@@ -1,7 +1,7 @@
 
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Package, Calendar, BarChart3 } from "lucide-react";
+import { TrendingUp, TrendingDown, IndianRupee, ShoppingCart, Package, Calendar, BarChart3 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -527,11 +527,11 @@ export default function ProfitLoss() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Sales</CardTitle>
-                  <ShoppingCart className="h-4 w-4 text-blue-600" />
+                  <IndianRupee className="h-4 w-4 text-blue-600" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-blue-600" data-testid="stat-sales">
-                    ${statistics.sales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{statistics.sales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     From {statistics.totalOrders} orders
@@ -546,7 +546,7 @@ export default function ProfitLoss() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-orange-600" data-testid="stat-purchase">
-                    ${statistics.purchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{statistics.purchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     From inventory purchases
@@ -573,7 +573,7 @@ export default function ProfitLoss() {
                     className={`text-2xl font-bold ${statistics.grossProfit > 0 ? 'text-green-600' : 'text-red-600'}`} 
                     data-testid="stat-gross-profit"
                   >
-                    ${(statistics.grossProfit > 0 ? statistics.grossProfit : statistics.grossLoss).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{(statistics.grossProfit > 0 ? statistics.grossProfit : statistics.grossLoss).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     Sales + Closing - Opening - Purchase
@@ -587,7 +587,7 @@ export default function ProfitLoss() {
                     {statistics.netProfit > 0 ? "Net Profit" : "Net Loss"}
                   </CardTitle>
                   {statistics.netProfit > 0 ? (
-                    <DollarSign className="h-4 w-4 text-green-600" />
+                    <IndianRupee className="h-4 w-4 text-green-600" />
                   ) : (
                     <TrendingDown className="h-4 w-4 text-red-600" />
                   )}
@@ -597,7 +597,7 @@ export default function ProfitLoss() {
                     className={`text-2xl font-bold ${statistics.netProfit > 0 ? 'text-green-600' : 'text-red-600'}`} 
                     data-testid="stat-net-profit"
                   >
-                    ${(statistics.netProfit > 0 ? statistics.netProfit : statistics.netLoss).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{(statistics.netProfit > 0 ? statistics.netProfit : statistics.netLoss).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     Gross Profit + Indirect Inc - Indirect Exp
@@ -670,21 +670,21 @@ export default function ProfitLoss() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                     <p className="text-sm text-blue-600 font-medium">Total Revenue</p>
-                    <p className="text-2xl font-bold text-blue-800">${todaysEarnings.revenue.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-blue-800">₹{todaysEarnings.revenue.toFixed(2)}</p>
                     <p className="text-xs text-blue-500 mt-1">from {todaysEarnings.orderCount} orders</p>
                   </div>
                   <div className="bg-red-50 p-4 rounded-lg border border-red-200">
                     <p className="text-sm text-red-600 font-medium">Refunds</p>
-                    <p className="text-2xl font-bold text-red-800">${todaysEarnings.refundAmount.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-red-800">₹{todaysEarnings.refundAmount.toFixed(2)}</p>
                     <p className="text-xs text-red-500 mt-1">from {todaysEarnings.returnCount} returns</p>
                   </div>
                   <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
                     <p className="text-sm text-orange-600 font-medium">Cost</p>
-                    <p className="text-2xl font-bold text-orange-800">${todaysEarnings.cost.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-orange-800">₹{todaysEarnings.cost.toFixed(2)}</p>
                   </div>
                   <div className={`${todaysEarnings.profit >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} p-4 rounded-lg border`}>
                     <p className={`text-sm font-medium ${todaysEarnings.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>Net Profit/Loss</p>
-                    <p className={`text-2xl font-bold ${todaysEarnings.profit >= 0 ? 'text-green-800' : 'text-red-800'}`}>${Math.abs(todaysEarnings.profit).toFixed(2)}</p>
+                    <p className={`text-2xl font-bold ${todaysEarnings.profit >= 0 ? 'text-green-800' : 'text-red-800'}`}>₹{Math.abs(todaysEarnings.profit).toFixed(2)}</p>
                     <p className={`text-xs ${todaysEarnings.profit >= 0 ? 'text-green-500' : 'text-red-500'} mt-1`}>
                       {todaysEarnings.profit >= 0 ? 'Profit' : 'Loss'}
                     </p>
@@ -714,11 +714,11 @@ export default function ProfitLoss() {
                               </TableCell>
                               <TableCell className="text-right">{data.count}</TableCell>
                               <TableCell className="text-right text-green-600 font-semibold">
-                                ${data.revenue.toFixed(2)}
+                                ₹{data.revenue.toFixed(2)}
                               </TableCell>
                               <TableCell className="text-right">{data.refunds}</TableCell>
                               <TableCell className="text-right text-red-600 font-semibold">
-                                ${data.refundAmount.toFixed(2)}
+                                ₹{data.refundAmount.toFixed(2)}
                               </TableCell>
                             </TableRow>
                           ))
@@ -777,18 +777,18 @@ export default function ProfitLoss() {
                             <TableCell className="font-medium">{item.method}</TableCell>
                             <TableCell className="text-right">{item.count}</TableCell>
                             <TableCell className="text-right text-green-600 font-semibold">
-                              ${item.revenue.toFixed(2)}
+                              ₹{item.revenue.toFixed(2)}
                             </TableCell>
                             <TableCell className="text-right">{item.refunds}</TableCell>
                             <TableCell className="text-right text-red-600 font-semibold">
-                              ${item.refundAmount.toFixed(2)}
+                              ₹{item.refundAmount.toFixed(2)}
                             </TableCell>
                             <TableCell className="text-right">{item.additionalPayments}</TableCell>
                             <TableCell className="text-right text-green-600 font-semibold">
-                              ${item.additionalPaymentAmount.toFixed(2)}
+                              ₹{item.additionalPaymentAmount.toFixed(2)}
                             </TableCell>
                             <TableCell className={`text-right font-semibold ${item.netRevenue >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              ${item.netRevenue.toFixed(2)}
+                              ₹{item.netRevenue.toFixed(2)}
                             </TableCell>
                             <TableCell className="text-right">
                               <Badge variant={percentage >= 30 ? "default" : "secondary"}>
@@ -853,31 +853,31 @@ export default function ProfitLoss() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Sales (Revenue)</span>
                   <span className="font-semibold text-blue-600">
-                    ${statistics.sales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{statistics.sales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Purchase (Cost)</span>
                   <span className="font-semibold text-orange-600">
-                    ${statistics.purchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{statistics.purchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Opening Stock</span>
                   <span className="font-semibold text-purple-600">
-                    ${statistics.openingStock.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{statistics.openingStock.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Closing Stock</span>
                   <span className="font-semibold text-indigo-600">
-                    ${statistics.closingStock.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{statistics.closingStock.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Direct Expenses</span>
                   <span className="font-semibold text-red-600">
-                    ${statistics.directExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{statistics.directExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -897,7 +897,7 @@ export default function ProfitLoss() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Avg Order Value</span>
                   <span className="font-semibold">
-                    ${statistics.totalOrders > 0 ? (statistics.sales / statistics.totalOrders).toFixed(2) : '0.00'}
+                    ₹{statistics.totalOrders > 0 ? (statistics.sales / statistics.totalOrders).toFixed(2) : '0.00'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -942,13 +942,13 @@ export default function ProfitLoss() {
                           <TableRow key={item.category}>
                             <TableCell className="font-medium">{item.category}</TableCell>
                             <TableCell className="text-right text-green-600 font-semibold">
-                              ${item.revenue.toFixed(2)}
+                              ₹{item.revenue.toFixed(2)}
                             </TableCell>
                             <TableCell className="text-right text-red-600 font-semibold">
-                              ${item.cost.toFixed(2)}
+                              ₹{item.cost.toFixed(2)}
                             </TableCell>
                             <TableCell className={`text-right font-semibold ${item.profit >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                              ${item.profit.toFixed(2)}
+                              ₹{item.profit.toFixed(2)}
                             </TableCell>
                             <TableCell className="text-right">
                               <Badge variant={margin >= 30 ? "default" : margin >= 15 ? "secondary" : "destructive"}>
@@ -991,13 +991,13 @@ export default function ProfitLoss() {
                         <TableCell className="text-right">{item.orders}</TableCell>
                         <TableCell className="text-right">{item.returns}</TableCell>
                         <TableCell className="text-right text-green-600 font-semibold">
-                          ${item.revenue.toFixed(2)}
+                          ₹{item.revenue.toFixed(2)}
                         </TableCell>
                         <TableCell className="text-right text-red-600 font-semibold">
-                          ${item.cost.toFixed(2)}
+                          ₹{item.cost.toFixed(2)}
                         </TableCell>
                         <TableCell className={`text-right font-semibold ${item.profit >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                          ${item.profit.toFixed(2)}
+                          ₹{item.profit.toFixed(2)}
                         </TableCell>
                       </TableRow>
                     ))}

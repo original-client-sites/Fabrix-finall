@@ -114,8 +114,8 @@ export class PDFService {
           doc.text(item.productName, 50, yPosition, { width: 140 });
           doc.text(item.sku, 200, yPosition);
           doc.text(item.quantity.toString(), 320, yPosition);
-          doc.text(`$${item.unitPrice}`, 380, yPosition);
-          doc.text(`$${item.subtotal}`, 480, yPosition, { align: 'right' });
+          doc.text(`inr ${item.unitPrice}`, 380, yPosition);
+          doc.text(`inr ${item.subtotal}`, 480, yPosition, { align: 'right' });
           totalReturnValue += parseFloat(item.subtotal);
           yPosition += 25;
         });
@@ -146,8 +146,8 @@ export class PDFService {
               const exchangeTotal = parseFloat(returnData.exchangeValue || '0') / exchangeItems.length;
               doc.text(item.exchangeProductName, 50, yPosition, { width: 260 });
               doc.text(item.quantity.toString(), 320, yPosition);
-              doc.text(`$${(exchangeTotal / item.quantity).toFixed(2)}`, 380, yPosition);
-              doc.text(`$${exchangeTotal.toFixed(2)}`, 480, yPosition, { align: 'right' });
+              doc.text(`inr ${(exchangeTotal / item.quantity).toFixed(2)}`, 380, yPosition);
+              doc.text(`inr ${exchangeTotal.toFixed(2)}`, 480, yPosition, { align: 'right' });
               totalExchangeValue += exchangeTotal;
               yPosition += 25;
             }
@@ -160,25 +160,25 @@ export class PDFService {
         doc.fontSize(10).font('Helvetica');
         
         doc.text('Return Value:', 320, yPosition);
-        doc.text(`$${totalReturnValue.toFixed(2)}`, 480, yPosition, { align: 'right' });
+        doc.text(`inr ${totalReturnValue.toFixed(2)}`, 480, yPosition, { align: 'right' });
         yPosition += 20;
         
         // Show refund/credit details
         if (returnData.refundAmount && parseFloat(returnData.refundAmount) > 0) {
           doc.text('Refund Amount:', 320, yPosition);
-          doc.text(`$${returnData.refundAmount}`, 480, yPosition, { align: 'right' });
+          doc.text(`inr ${returnData.refundAmount}`, 480, yPosition, { align: 'right' });
           yPosition += 20;
         }
         
         if (returnData.creditAmount && parseFloat(returnData.creditAmount) > 0) {
           doc.text('Store Credit:', 320, yPosition);
-          doc.text(`$${returnData.creditAmount}`, 480, yPosition, { align: 'right' });
+          doc.text(`inr ${returnData.creditAmount}`, 480, yPosition, { align: 'right' });
           yPosition += 20;
         }
 
         if (returnData.exchangeValue && parseFloat(returnData.exchangeValue) > 0) {
           doc.text('Exchange Value:', 320, yPosition);
-          doc.text(`$${returnData.exchangeValue}`, 480, yPosition, { align: 'right' });
+          doc.text(`inr ${returnData.exchangeValue}`, 480, yPosition, { align: 'right' });
           yPosition += 25;
           
           doc.moveTo(50, yPosition).lineTo(550, yPosition).stroke();
@@ -187,20 +187,20 @@ export class PDFService {
           doc.fontSize(12).font('Helvetica-Bold');
           if (returnData.refundAmount && parseFloat(returnData.refundAmount) > 0) {
             doc.text('Refund Amount:', 320, yPosition);
-            doc.text(`$${returnData.refundAmount}`, 480, yPosition, { align: 'right' });
+            doc.text(`inr ${returnData.refundAmount}`, 480, yPosition, { align: 'right' });
           } else if (returnData.additionalPayment && parseFloat(returnData.additionalPayment) > 0) {
             doc.text('Additional Payment:', 320, yPosition);
-            doc.text(`$${returnData.additionalPayment}`, 480, yPosition, { align: 'right' });
+            doc.text(`inr ${returnData.additionalPayment}`, 480, yPosition, { align: 'right' });
           } else {
             doc.text('Even Exchange:', 320, yPosition);
-            doc.text('$0.00', 480, yPosition, { align: 'right' });
+            doc.text('inr 0.00', 480, yPosition, { align: 'right' });
           }
         } else {
           doc.moveTo(50, yPosition).lineTo(550, yPosition).stroke();
           yPosition += 15;
           doc.fontSize(12).font('Helvetica-Bold');
           doc.text('Refund Amount:', 320, yPosition);
-          doc.text(`$${returnData.refundAmount}`, 480, yPosition, { align: 'right' });
+          doc.text(`inr ${returnData.refundAmount}`, 480, yPosition, { align: 'right' });
         }
 
         // Reason
@@ -287,8 +287,8 @@ export class PDFService {
           doc.text(item.productName, 50, yPosition, { width: 140 });
           doc.text(item.sku, 200, yPosition);
           doc.text(item.quantity.toString(), 320, yPosition);
-          doc.text(`$${item.unitPrice}`, 380, yPosition);
-          doc.text(`$${item.subtotal}`, 480, yPosition, { align: 'right' });
+          doc.text(`inr ${item.unitPrice}`, 380, yPosition);
+          doc.text(`inr ${item.subtotal}`, 480, yPosition, { align: 'right' });
           yPosition += 25;
         });
 
@@ -296,7 +296,7 @@ export class PDFService {
         if (order.discountAmount && order.discountAmount !== null && order.discountAmount !== undefined && parseFloat(order.discountAmount.toString()) > 0) {
           // Subtotal
           doc.text('Subtotal:', 320, yPosition);
-          doc.text(`$${parseFloat((order.subTotal?.toString() || '0')).toFixed(2)}`, 480, yPosition, { align: 'right' });
+          doc.text(`inr ${parseFloat((order.subTotal?.toString() || '0')).toFixed(2)}`, 480, yPosition, { align: 'right' });
           yPosition += 20;
           
           // Discount details
@@ -306,7 +306,7 @@ export class PDFService {
           } else {
             doc.text('Discount:', 320, yPosition);
           }
-          doc.text(`-$${parseFloat(order.discountAmount.toString()).toFixed(2)}`, 480, yPosition, { align: 'right' });
+          doc.text(`-inr ${parseFloat(order.discountAmount.toString()).toFixed(2)}`, 480, yPosition, { align: 'right' });
           yPosition += 25;
           
           // Final total after discount
@@ -315,7 +315,7 @@ export class PDFService {
           
           doc.fontSize(14).font('Helvetica-Bold');
           doc.text('TOTAL AFTER DISCOUNT:', 320, yPosition);
-          doc.text(`$${parseFloat(order.totalAmount.toString()).toFixed(2)}`, 480, yPosition, { align: 'right' });
+          doc.text(`inr ${parseFloat(order.totalAmount.toString()).toFixed(2)}`, 480, yPosition, { align: 'right' });
           
           // Reset font back to normal for subsequent text
           doc.fontSize(10).font('Helvetica');
@@ -325,7 +325,7 @@ export class PDFService {
           yPosition += 15;
           doc.fontSize(14).font('Helvetica-Bold');
           doc.text('GRAND TOTAL:', 320, yPosition);
-          doc.text(`$${parseFloat(order.totalAmount.toString()).toFixed(2)}`, 480, yPosition, { align: 'right' });
+          doc.text(`inr ${parseFloat(order.totalAmount.toString()).toFixed(2)}`, 480, yPosition, { align: 'right' });
         }
 
         // Amount in words (optional - you can implement this)

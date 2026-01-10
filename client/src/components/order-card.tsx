@@ -141,11 +141,11 @@ export function OrderCard({ order }: OrderCardProps) {
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 lg:gap-6">
             <div>
               <p className="text-sm text-muted-foreground mb-1">Total Amount</p>
-              <p className="text-2xl font-bold" data-testid={`text-total-${order.id}`}>${order.totalAmount}</p>
+              <p className="text-2xl font-bold" data-testid={`text-total-${order.id}`}>₹{order.totalAmount}</p>
               {order.discountAmount && parseFloat(order.discountAmount) > 0 && (
                 <div className="text-sm mt-1">
-                  <p className="text-muted-foreground line-through">Subtotal: ${order.subTotal}</p>
-                  <p className="text-green-600 font-medium">Discount: -${order.discountAmount}{order.discountPercentage && parseFloat(order.discountPercentage) > 0 && ` (${order.discountPercentage}%)`}</p>
+                  <p className="text-muted-foreground line-through">Subtotal: ₹{order.subTotal}</p>
+                  <p className="text-green-600 font-medium">Discount: -₹{order.discountAmount}{order.discountPercentage && parseFloat(order.discountPercentage) > 0 && ` (${order.discountPercentage}%)`}</p>
                 </div>
               )}
             </div>
@@ -195,7 +195,7 @@ export function OrderCard({ order }: OrderCardProps) {
                   </div>
                   <div className="flex items-center gap-4 flex-shrink-0">
                     <span className="text-muted-foreground">Qty: {item.quantity}</span>
-                    <span className="font-medium min-w-[80px] text-right">${item.subtotal}</span>
+                    <span className="font-medium min-w-[80px] text-right">₹{item.subtotal}</span>
                   </div>
                 </div>
               ))}
@@ -246,17 +246,17 @@ export function OrderCard({ order }: OrderCardProps) {
                     <div className="space-y-1">
                       {ret.exchangeValue && parseFloat(ret.exchangeValue) > 0 && (
                         <div className="text-muted-foreground">
-                          Exchange Value: <span className="font-medium">${ret.exchangeValue}</span>
+                          Exchange Value: <span className="font-medium">₹{ret.exchangeValue}</span>
                         </div>
                       )}
                       {ret.refundAmount && parseFloat(ret.refundAmount) > 0 && (
                         <div className="text-green-600">
-                          Refunded: <span className="font-semibold">${ret.refundAmount}</span>
+                          Refunded: <span className="font-semibold">₹{ret.refundAmount}</span>
                         </div>
                       )}
                       {ret.additionalPayment && parseFloat(ret.additionalPayment) > 0 && (
                         <div className="text-orange-600">
-                          Additional Payment: <span className="font-semibold">${ret.additionalPayment}</span>
+                          Additional Payment: <span className="font-semibold">₹{ret.additionalPayment}</span>
                         </div>
                       )}
                     </div>

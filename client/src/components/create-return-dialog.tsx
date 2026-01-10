@@ -105,7 +105,7 @@ export function CreateReturnDialog({ open, onOpenChange, order }: CreateReturnDi
       toast({
         title: "Return Created",
         description: credit > 0
-          ? `Return has been created successfully. A store credit discount code for $${credit.toFixed(2)} has been sent to the customer's email.`
+          ? `Return has been created successfully. A store credit discount code for ₹{credit.toFixed(2)} has been sent to the customer's email.`
           : "Return has been created successfully.",
       });
       onOpenChange(false);
@@ -293,7 +293,7 @@ export function CreateReturnDialog({ open, onOpenChange, order }: CreateReturnDi
                       <div className="flex-1">
                         <p className="font-medium">{item.productName}</p>
                         <p className="text-sm text-muted-foreground">{item.sku}</p>
-                        <p className="text-sm">Price: ${item.unitPrice}</p>
+                        <p className="text-sm">Price: ₹{item.unitPrice}</p>
                       </div>
 
                       <div className="flex items-center gap-3">
@@ -454,34 +454,34 @@ export function CreateReturnDialog({ open, onOpenChange, order }: CreateReturnDi
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Return Value:</span>
-                        <span className="font-medium">${totalReturnValue.toFixed(2)}</span>
+                        <span className="font-medium">₹{totalReturnValue.toFixed(2)}</span>
                       </div>
                       {totalExchangeValue > 0 && (
                         <>
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Exchange Value:</span>
-                            <span className="font-medium">${totalExchangeValue.toFixed(2)}</span>
+                            <span className="font-medium">₹{totalExchangeValue.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between pt-2 border-t">
                             {refund > 0 ? (
                               <>
                                 <span className="font-semibold">Refund Amount:</span>
-                                <span className="font-semibold text-green-600">${refund.toFixed(2)}</span>
+                                <span className="font-semibold text-green-600">₹{refund.toFixed(2)}</span>
                               </>
                             ) : credit > 0 ? (
                               <>
                                 <span className="font-semibold">Store Credit (Future Discount):</span>
-                                <span className="font-semibold text-blue-600">${credit.toFixed(2)}</span>
+                                <span className="font-semibold text-blue-600">₹{credit.toFixed(2)}</span>
                               </>
                             ) : additionalPayment > 0 ? (
                               <>
                                 <span className="font-semibold">Payable Account (Customer Owes):</span>
-                                <span className="font-semibold text-red-600">${additionalPayment.toFixed(2)}</span>
+                                <span className="font-semibold text-red-600">₹{additionalPayment.toFixed(2)}</span>
                               </>
                             ) : (
                               <>
                                 <span className="font-semibold">Even Exchange:</span>
-                                <span className="font-semibold">$0.00</span>
+                                <span className="font-semibold">₹0.00</span>
                               </>
                             )}
                           </div>
@@ -490,7 +490,7 @@ export function CreateReturnDialog({ open, onOpenChange, order }: CreateReturnDi
                       {totalExchangeValue === 0 && (
                         <div className="flex justify-between pt-2 border-t">
                           <span className="font-semibold">Refund Amount:</span>
-                          <span className="font-semibold text-green-600">${totalReturnValue.toFixed(2)}</span>
+                          <span className="font-semibold text-green-600">₹{totalReturnValue.toFixed(2)}</span>
                         </div>
                       )}
                     </div>

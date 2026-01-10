@@ -71,9 +71,9 @@ export function ProductCard({ product, viewMode }: ProductCardProps) {
               </div>
               <div className="flex items-center gap-3 flex-shrink-0">
                 <div className="text-right">
-                  <div className="text-2xl font-bold" data-testid={`text-price-${product.id}`}>${product.price}</div>
+                  <div className="text-2xl font-bold" data-testid={`text-price-${product.id}`}>₹{product.price}</div>
                   {product.costPrice && (
-                    <div className="text-xs text-muted-foreground">Cost: ${product.costPrice}</div>
+                    <div className="text-xs text-muted-foreground">Cost: ₹{product.costPrice}</div>
                   )}
                 </div>
                 <div className="flex gap-1">
@@ -172,9 +172,9 @@ export function ProductCard({ product, viewMode }: ProductCardProps) {
             <p data-testid={`text-brand-${product.id}`}>{product.brand} • {product.category}</p>
             <p>{product.size} • {product.color}</p>
           </div>
-          <div className="text-2xl font-bold" data-testid={`text-price-${product.id}`}>${product.price}</div>
+          <div className="text-2xl font-bold" data-testid={`text-price-${product.id}`}>₹{product.price}</div>
           {product.costPrice && (
-            <div className="text-xs text-muted-foreground mt-1">Cost: ${product.costPrice}</div>
+            <div className="text-xs text-muted-foreground mt-1">Cost: ₹{product.costPrice}</div>
           )}
         </CardContent>
         <CardFooter className="p-6 pt-0 flex gap-2">

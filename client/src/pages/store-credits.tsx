@@ -151,7 +151,7 @@ export default function StoreCredits() {
                               </code>
                             </TableCell>
                             <TableCell className="text-green-600 font-semibold">
-                              ${parseFloat(code.amount).toFixed(2)}
+                              ₹{parseFloat(code.amount).toFixed(2)}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {code.createdAt
@@ -232,7 +232,7 @@ export default function StoreCredits() {
                               </code>
                             </TableCell>
                             <TableCell className="text-muted-foreground">
-                              ${parseFloat(code.amount).toFixed(2)}
+                              ₹{parseFloat(code.amount).toFixed(2)}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {code.createdAt
