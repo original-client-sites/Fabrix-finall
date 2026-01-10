@@ -118,7 +118,7 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
     if (product.stockQuantity === 0) {
       toast({
         title: "Out of Stock",
-        description: `${product.productName} is currently out of stock`,
+        description: `₹{product.productName} is currently out of stock`,
         variant: "destructive",
       });
       return;
@@ -129,7 +129,7 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
       if (existingItem.quantity >= product.stockQuantity) {
         toast({
           title: "Stock Limit Reached",
-          description: `Only ${product.stockQuantity} units available for ${product.productName}`,
+          description: `Only ₹{product.stockQuantity} units available for ${product.productName}`,
           variant: "destructive",
         });
         return;
@@ -248,7 +248,7 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
       discountPercentage = (discountAmount / subTotal) * 100;
     }
     
-    createMutation.mutate({
+    const orderData = {
       ...data,
       subTotal: subTotal.toFixed(2),
       discountAmount: discountAmount.toFixed(2),
@@ -593,7 +593,7 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                               </Button>
                             </div>
                             <p className="font-semibold w-20 text-right" data-testid={`text-subtotal-${index}`}>
-                              ${item.subtotal}
+                              ₹{item.subtotal}
                             </p>
                             <Button
                               type="button"
@@ -627,7 +627,7 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                     <div className="text-right">
                       <p className="font-semibold text-lg">Total</p>
                       <p className="font-bold text-2xl" data-testid="text-order-total">
-                        ${calculateTotal()}
+                        ₹{calculateTotal()}
                       </p>
                     </div>
                   </div>

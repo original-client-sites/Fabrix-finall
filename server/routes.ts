@@ -270,8 +270,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const orders = await storage.getOrders();
       res.json(orders);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch orders" });
+    } catch (error: any) {
+      console.error('Error fetching orders:', error);
+      res.status(500).json({ error: `Failed to fetch orders: ${error.message || 'Unknown error'}` });
     }
   });
 
@@ -282,8 +283,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Order not found" });
       }
       res.json(order);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch order" });
+    } catch (error: any) {
+      console.error('Error fetching order:', error);
+      res.status(500).json({ error: `Failed to fetch order: ${error.message || 'Unknown error'}` });
     }
   });
 
@@ -291,8 +293,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const orders = await storage.getOrdersByCustomerEmail(req.params.email);
       res.json(orders);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch orders" });
+    } catch (error: any) {
+      console.error('Error fetching orders by customer email:', error);
+      res.status(500).json({ error: `Failed to fetch orders: ${error.message || 'Unknown error'}` });
     }
   });
 
@@ -309,6 +312,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const parsedOrder = insertOrderSchema.safeParse(orderData);
       if (!parsedOrder.success) {
         const error = fromZodError(parsedOrder.error);
+        console.error('Order validation error:', error.message);
         return res.status(400).json({ error: error.message });
       }
 
@@ -321,6 +325,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const parsedItems = orderItemsSchema.safeParse(items);
       if (!parsedItems.success) {
         const error = fromZodError(parsedItems.error);
+        console.error('Order items validation error:', error.message);
         return res.status(400).json({ error: error.message });
       }
 
@@ -331,8 +336,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const order = await storage.createOrder(parsedOrder.data, parsedItems.data);
       res.status(201).json(order);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to create order" });
+    } catch (error: any) {
+      console.error('Error creating order:', error);
+      res.status(500).json({ error: `Failed to create order: ${error.message || 'Unknown error'}` });
     }
   });
 
