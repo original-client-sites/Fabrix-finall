@@ -8,6 +8,7 @@ import Orders from "@/pages/orders";
 import StockHistory from "@/pages/stock-history";
 import StoreCredits from "@/pages/store-credits";
 import ProfitLoss from "@/pages/profit-loss";
+import OrderSummary from "@/pages/order-summary";
 import NotFound from "@/pages/not-found";
 import { Navigation } from "@/components/navigation";
 import { Footer } from "@/components/footer";
@@ -20,6 +21,7 @@ function Router() {
       <Route path="/stock-history" component={StockHistory} />
       <Route path="/store-credits" component={StoreCredits} />
       <Route path="/profit-loss" component={ProfitLoss} />
+      <Route path="/order-summary" component={OrderSummary} />
       <Route component={NotFound} />
     </Switch>
   );
