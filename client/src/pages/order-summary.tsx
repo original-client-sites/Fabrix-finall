@@ -398,6 +398,11 @@ export default function OrderSummary() {
                           )}
                         </td>
                         <td className="p-4 align-middle">
+                          {order.customerPhone && (
+                            <div className="font-medium">{order.customerPhone}</div>
+                          )}
+                        </td>
+                        <td className="p-4 align-middle">
                           <div className="text-sm">
                             {order.createdAt ? formatInIST(new Date(order.createdAt), "MMM dd, yyyy") : 'N/A'}
                           </div>
