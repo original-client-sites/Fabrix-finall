@@ -21,7 +21,7 @@ import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { useQuery } from "@tanstack/react-query";
 import { formatInIST } from "../lib/utils";
-import type { OrderWithItems } from "@shared/schema";
+import type { OrderWithItems, PaymentDetail } from "@shared/schema";
 
 // Import the date range type from react-day-picker
 import { DateRange as DayPickerDateRange } from "react-day-picker";
@@ -92,6 +92,77 @@ export default function OrderSummary() {
   // Format status display
   const formatStatus = (status: string) => {
     return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+  // Process payment methods into separate columns
+  const processPaymentMethods = (order: OrderWithItems) => {
+    // Initialize all payment method amounts to 0
+    let cash = 0;
+    let creditCard = 0;
+    let debitCash = 0; // Renamed from debitCard to match requested column name
+    let upi = 0;
+    
+    if (order.paymentMethod === 'mixed' && order.payments && order.payments.length > 0) {
+      // If it's a mixed payment, sum up each payment method
+      order.payments.forEach((payment: PaymentDetail) => {
+        const amount = parseFloat(payment.amount) || 0;
+        switch (payment.paymentMethod) {
+          case 'cash':
+            cash += amount;
+            break;
+          case 'credit_card':
+            creditCard += amount;
+            break;
+          case 'debit_card':
+            debitCash += amount; // Changed to debitCash to match requested column name
+            break;
+          case 'upi':
+            upi += amount;
+            break;
+          case 'bank_transfer':
+            // Bank transfer is not in the requested columns, so we'll add it to UPI for now
+            // Or we could create a separate column for it
+            upi += amount;
+            break;
+          case 'store_credit':
+            // Store credit is not in the requested columns, so we'll add it to cash for now
+            cash += amount;
+            break;
+          default:
+            // Default to cash if unknown payment method
+            cash += amount;
+            break;
+        }
+      });
+    } else {
+      // If it's not mixed, assign the total amount to the appropriate column
+      const amount = parseFloat(order.totalAmount) || 0;
+      switch (order.paymentMethod) {
+        case 'cash':
+          cash = amount;
+          break;
+        case 'credit_card':
+          creditCard = amount;
+          break;
+        case 'debit_card':
+          debitCash = amount; // Changed to debitCash to match requested column name
+          break;
+        case 'upi':
+          upi = amount;
+          break;
+        case 'bank_transfer':
+          upi = amount; // Map to UPI as per requested columns
+          break;
+        case 'store_credit':
+          cash = amount; // Map to cash as per requested columns
+          break;
+        default:
+          cash = amount; // Default to cash
+          break;
+      }
+    }
+    
+    return { cash, creditCard, debitCash, upi };
   };
 
   // Get status color
@@ -197,17 +268,23 @@ export default function OrderSummary() {
   };
   
   const exportOrderSummary = (format: 'csv' | 'excel') => {
-    const headers = ['Order #', 'Customer', 'Phone', 'Date', 'Items', 'Total', 'Status', 'Payment'];
-    const rows = filteredOrders.map(order => [
-      order.orderNumber,
-      order.customerName,
-      order.customerPhone ? `"${order.customerPhone}"` : '',
-      order.createdAt ? formatDateForExport(order.createdAt.toString()) : '"N/A"',
-      order.items.length,
-      parseFloat(order.totalAmount).toFixed(2),
-      order.status,
-      formatPaymentMethod(order.paymentMethod)
-    ]);
+    const headers = ['Order #', 'Customer Name', 'Phone Number', 'Date', 'Items', 'Cash', 'Credit Card', 'Debit Cash', 'UPI', 'Discount Amount', 'Total'];
+    const rows = filteredOrders.map(order => {
+      const paymentData = processPaymentMethods(order);
+      return [
+        order.orderNumber,
+        order.customerName,
+        order.customerPhone ? `"${order.customerPhone}"` : '',
+        order.createdAt ? formatDateForExport(order.createdAt.toString()) : '"N/A"',
+        order.items.map(item => item.productName).join(', '),
+        paymentData.cash.toFixed(2),
+        paymentData.creditCard.toFixed(2),
+        paymentData.debitCash.toFixed(2),
+        paymentData.upi.toFixed(2),
+        parseFloat(order.discountAmount || '0').toFixed(2),
+        parseFloat(order.totalAmount).toFixed(2)
+      ];
+    });
     
     const data = [headers, ...rows];
     const filename = `order-summary-${new Date().toISOString().split('T')[0]}.${format === 'csv' ? 'csv' : 'xlsx'}`;
@@ -248,57 +325,8 @@ export default function OrderSummary() {
   };
   
   const exportBothTables = (format: 'csv' | 'excel') => {
-    // Combine both tables with a separator
-    const orderHeaders = ['Order Summary', '', '', '', '', '', '', ''];
-    const orderSubHeaders = ['Order #', 'Customer', 'Phone', 'Date', 'Items', 'Total', 'Status', 'Payment'];
-    const orderRows = filteredOrders.map(order => [
-      order.orderNumber,
-      order.customerName,
-      order.customerPhone ? `"${order.customerPhone}"` : '',
-      order.createdAt ? formatDateForExport(order.createdAt.toString()) : '"N/A"',
-      order.items.length,
-      parseFloat(order.totalAmount).toFixed(2),
-      order.status,
-      formatPaymentMethod(order.paymentMethod)
-    ]);
-    
-    const paymentHeaders = ['', '', '', '', '', '', '', ''];
-    const paymentSectionHeader = ['Daily Payment Summary', '', '', '', '', '', '', ''];
-    const paymentSubHeaders = ['Date', 'Cash', 'Credit Card', 'Debit Card', 'UPI', 'Bank Transfer', 'Store Credit', 'Mixed', 'Total'];
-    const paymentRows = dailyPaymentSummary.map(day => {
-      const total = day.cash + day.credit_card + day.debit_card + day.upi + 
-                  day.bank_transfer + day.store_credit + day.mixed;
-      return [
-        formatDateForExport(day.date),
-        day.cash.toFixed(2),
-        day.credit_card.toFixed(2),
-        day.debit_card.toFixed(2),
-        day.upi.toFixed(2),
-        day.bank_transfer.toFixed(2),
-        day.store_credit.toFixed(2),
-        day.mixed.toFixed(2),
-        total.toFixed(2)
-      ];
-    });
-    
-    // Add empty rows as separators
-    const data = [
-      orderHeaders,
-      orderSubHeaders,
-      ...orderRows,
-      ['', '', '', '', '', '', '', ''], // separator
-      paymentSectionHeader,
-      paymentSubHeaders,
-      ...paymentRows
-    ];
-    
-    const filename = `order-and-payment-summary-${new Date().toISOString().split('T')[0]}.${format === 'csv' ? 'csv' : 'xlsx'}`;
-    
-    if (format === 'csv') {
-      exportToCSV(data, filename);
-    } else {
-      exportToExcel(data, filename);
-    }
+    // Now that we have only one table, use the same export as single table
+    exportOrderSummary(format);
   };
 
   return (
@@ -316,19 +344,19 @@ export default function OrderSummary() {
               <div className="flex gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => exportBothTables('csv')}
+                  onClick={() => exportOrderSummary('csv')}
                   className="flex items-center gap-2"
                 >
                   <FileText className="h-4 w-4" />
-                  Export All (CSV)
+                  Export (CSV)
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => exportBothTables('excel')}
+                  onClick={() => exportOrderSummary('excel')}
                   className="flex items-center gap-2"
                 >
                   <FileSpreadsheet className="h-4 w-4" />
-                  Export All (Excel)
+                  Export (Excel)
                 </Button>
               </div>
             </div>
@@ -563,10 +591,10 @@ export default function OrderSummary() {
                         Order #
                       </th>
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
-                        Customer
+                        Customer Name
                       </th>
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
-                        Phone
+                        Phone Number
                       </th>
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
                         Date
@@ -575,62 +603,75 @@ export default function OrderSummary() {
                         Items
                       </th>
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                        Cash
+                      </th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                        Credit Card
+                      </th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                        Debit Cash
+                      </th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                        UPI
+                      </th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                        Discount Amount
+                      </th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
                         Total
-                      </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
-                        Status
-                      </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
-                        Payment
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {filteredOrders.map((order) => (
-                      <tr key={order.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="p-4 align-middle">
-                          <div className="font-medium font-mono">#{order.orderNumber}</div>
-                        </td>
-                        <td className="p-4 align-middle">
-                          <div className="font-medium">{order.customerName}</div>
-                          {order.customerEmail && (
-                            <div className="text-sm text-muted-foreground">{order.customerEmail}</div>
-                          )}
-                        </td>
-                        <td className="p-4 align-middle">
-                          {order.customerPhone && (
-                            <div className="font-medium">{order.customerPhone}</div>
-                          )}
-                        </td>
-                        <td className="p-4 align-middle">
-                          <div className="text-sm">
-                            {order.createdAt ? formatInIST(new Date(order.createdAt), "MMM dd, yyyy") : 'N/A'}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {order.createdAt ? formatInIST(new Date(order.createdAt), "HH:mm") : ''}
-                          </div>
-                        </td>
-                        <td className="p-4 align-middle">
-                          <div className="text-sm">{order.items.length} items</div>
-                          <div className="text-xs text-muted-foreground">
-                            {order.items.slice(0, 2).map((item: any) => item.productName).join(', ')}
-                            {order.items.length > 2 && '...'}
-                          </div>
-                        </td>
-                        <td className="p-4 align-middle font-medium">
-                          ₹{parseFloat(order.totalAmount).toFixed(2)}
-                        </td>
-                        <td className="p-4 align-middle">
-                          <Badge className={getStatusColor(order.status)}>
-                            {formatStatus(order.status)}
-                          </Badge>
-                        </td>
-                        <td className="p-4 align-middle">
-                          <div className="capitalize">{formatPaymentMethod(order.paymentMethod)}</div>
-                          {renderPaymentBreakdown(order)}
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredOrders.map((order) => {
+                      const paymentData = processPaymentMethods(order);
+                      return (
+                        <tr key={order.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="p-4 align-middle">
+                            <div className="font-medium font-mono">#{order.orderNumber}</div>
+                          </td>
+                          <td className="p-4 align-middle">
+                            <div className="font-medium">{order.customerName}</div>
+                            {order.customerEmail && (
+                              <div className="text-sm text-muted-foreground">{order.customerEmail}</div>
+                            )}
+                          </td>
+                          <td className="p-4 align-middle">
+                            {order.customerPhone && (
+                              <div className="font-medium">{order.customerPhone}</div>
+                            )}
+                          </td>
+                          <td className="p-4 align-middle">
+                            <div className="text-sm">
+                              {order.createdAt ? formatInIST(new Date(order.createdAt), "MMM dd, yyyy") : 'N/A'}
+                            </div>
+                          </td>
+                          <td className="p-4 align-middle">
+                            <div className="text-sm">
+                              {order.items.map(item => item.productName).join(', ')}
+                            </div>
+                          </td>
+                          <td className="p-4 align-middle">
+                            ₹{paymentData.cash.toFixed(2)}
+                          </td>
+                          <td className="p-4 align-middle">
+                            ₹{paymentData.creditCard.toFixed(2)}
+                          </td>
+                          <td className="p-4 align-middle">
+                            ₹{paymentData.debitCash.toFixed(2)}
+                          </td>
+                          <td className="p-4 align-middle">
+                            ₹{paymentData.upi.toFixed(2)}
+                          </td>
+                          <td className="p-4 align-middle">
+                            ₹{(parseFloat(order.discountAmount || '0')).toFixed(2)}
+                          </td>
+                          <td className="p-4 align-middle font-medium">
+                            ₹{parseFloat(order.totalAmount).toFixed(2)}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -638,96 +679,7 @@ export default function OrderSummary() {
           )}
         </div>
         
-        {/* Daily Payment Summary Table */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-xl">Daily Payment Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {dailyPaymentSummary.length > 0 ? (
-                <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-muted/50">
-                        <tr>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
-                            Date
-                          </th>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
-                            Cash
-                          </th>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
-                            Credit Card
-                          </th>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
-                            Debit Card
-                          </th>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
-                            UPI
-                          </th>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
-                            Bank Transfer
-                          </th>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
-                            Store Credit
-                          </th>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
-                            Mixed
-                          </th>
-                          <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
-                            Total
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {dailyPaymentSummary.map((day) => {
-                          const total = day.cash + day.credit_card + day.debit_card + day.upi + 
-                                      day.bank_transfer + day.store_credit + day.mixed;
-                          return (
-                            <tr key={day.date} className="hover:bg-muted/30 transition-colors">
-                              <td className="p-4 align-middle font-medium">
-                                {formatInIST(new Date(day.date), "MMM dd, yyyy")}
-                              </td>
-                              <td className="p-4 align-middle">
-                                ₹{day.cash.toFixed(2)}
-                              </td>
-                              <td className="p-4 align-middle">
-                                ₹{day.credit_card.toFixed(2)}
-                              </td>
-                              <td className="p-4 align-middle">
-                                ₹{day.debit_card.toFixed(2)}
-                              </td>
-                              <td className="p-4 align-middle">
-                                ₹{day.upi.toFixed(2)}
-                              </td>
-                              <td className="p-4 align-middle">
-                                ₹{day.bank_transfer.toFixed(2)}
-                              </td>
-                              <td className="p-4 align-middle">
-                                ₹{day.store_credit.toFixed(2)}
-                              </td>
-                              <td className="p-4 align-middle">
-                                ₹{day.mixed.toFixed(2)}
-                              </td>
-                              <td className="p-4 align-middle font-medium">
-                                ₹{total.toFixed(2)}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  No payment data available for the selected filters
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+
       </div>
     </div>
   );
