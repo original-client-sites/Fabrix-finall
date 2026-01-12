@@ -21,7 +21,7 @@ import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { useQuery } from "@tanstack/react-query";
 import { formatInIST } from "../lib/utils";
-import type { OrderWithItems, PaymentDetail } from "@shared/schema";
+import type { OrderWithItems, PaymentDetail, ReturnWithItems, DiscountCode } from "@shared/schema";
 
 // Import the date range type from react-day-picker
 import { DateRange as DayPickerDateRange } from "react-day-picker";
@@ -36,6 +36,78 @@ export default function OrderSummary() {
   const { data: orders = [], isLoading } = useQuery<OrderWithItems[]>({
     queryKey: ["/api/orders"],
   });
+  
+  const { data: returns = [] } = useQuery<ReturnWithItems[]>({
+    queryKey: ["/api/returns"],
+  });
+  
+  const { data: discountCodes = [] } = useQuery({
+    queryKey: ["/api/discount-codes"],
+    queryFn: async () => {
+      const response = await fetch("/api/discount-codes");
+      if (!response.ok) {
+        throw new Error("Failed to fetch discount codes");
+      }
+      return response.json();
+    },
+  });
+  
+  // Function to get returns for an order
+  const getReturnsForOrder = (orderId: string) => {
+    return returns.filter((ret) => ret.orderId === orderId);
+  };
+  
+  // Function to get discount codes for a customer
+  const getCustomerDiscountCodes = (customerEmail: string) => {
+    return discountCodes.filter((code: DiscountCode) => code.customerEmail === customerEmail && !code.isUsed);
+  };
+  
+  // Function to calculate remaining store credit for a customer
+  const getRemainingStoreCredit = (customerEmail: string) => {
+    const codes = getCustomerDiscountCodes(customerEmail);
+    return codes.reduce((total: number, code: DiscountCode) => total + parseFloat(code.amount), 0);
+  };
+  
+  // Function to get used store credit for an order
+  const getUsedStoreCreditForOrder = (order: OrderWithItems) => {
+    // Check if this order was used to create a return that had credit amount
+    const orderReturns = getReturnsForOrder(order.id);
+    const totalCreditAmount = orderReturns.reduce((total, ret) => {
+      return total + (parseFloat(ret.creditAmount || '0'));
+    }, 0);
+    
+    // Also check if the order itself used a discount code (store credit)
+    let discountCodeAmount = 0;
+    if (order.payments) {
+      const storeCreditPayments = order.payments.filter(p => p.paymentMethod === 'store_credit');
+      discountCodeAmount = storeCreditPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
+    }
+    
+    return { creditFromReturns: totalCreditAmount, discountCodeAmount, totalUsed: totalCreditAmount + discountCodeAmount };
+  };
+  
+  // Function to get returned items for an order
+  const getReturnedItemsForOrder = (orderId: string) => {
+    const orderReturns = getReturnsForOrder(orderId);
+    return orderReturns.flatMap(ret => ret.items.map(item => ({
+      ...item,
+      returnReason: ret.reason,
+      returnStatus: ret.status
+    })));
+  };
+  
+  // Function to get exchanged items for an order
+  const getExchangedItemsForOrder = (orderId: string) => {
+    const orderReturns = getReturnsForOrder(orderId);
+    return orderReturns.flatMap(ret => 
+      ret.items.filter(item => item.exchangeProductId || item.exchangeProductName)
+        .map(item => ({
+          ...item,
+          returnReason: ret.reason,
+          returnStatus: ret.status
+        }))
+    );
+  };
 
   // Filter orders based on search and filters
   const filteredOrders = orders.filter((order) => {
@@ -268,9 +340,14 @@ export default function OrderSummary() {
   };
   
   const exportOrderSummary = (format: 'csv' | 'excel') => {
-    const headers = ['Order #', 'Customer Name', 'Phone Number', 'Date', 'Items', 'Cash', 'Credit Card', 'Debit Cash', 'UPI', 'Discount Amount', 'Total'];
+    const headers = ['Order #', 'Customer Name', 'Phone Number', 'Date', 'Items', 'Cash', 'Credit Card', 'Debit Cash', 'UPI', 'Discount Amount', 'Remaining Store Credit', 'Used Store Credit', 'Returned Items', 'Items Taken in Exchange', 'Total'];
     const rows = filteredOrders.map(order => {
       const paymentData = processPaymentMethods(order);
+      const remainingStoreCredit = getRemainingStoreCredit(order.customerEmail || '');
+      const usedStoreCredit = getUsedStoreCreditForOrder(order);
+      const returnedItems = getReturnedItemsForOrder(order.id);
+      const exchangedItems = getExchangedItemsForOrder(order.id);
+      
       return [
         order.orderNumber,
         order.customerName,
@@ -282,6 +359,14 @@ export default function OrderSummary() {
         paymentData.debitCash.toFixed(2),
         paymentData.upi.toFixed(2),
         parseFloat(order.discountAmount || '0').toFixed(2),
+        remainingStoreCredit.toFixed(2),
+        usedStoreCredit.totalUsed.toFixed(2),
+        returnedItems.length > 0 
+          ? returnedItems.map(item => `${item.quantity}x ${item.productName}`).join(', ')
+          : 'None',
+        exchangedItems.length > 0
+          ? exchangedItems.map(item => `${item.quantity}x ${item.exchangeProductName || item.exchangeProductId}`).join(', ')
+          : 'None',
         parseFloat(order.totalAmount).toFixed(2)
       ];
     });
@@ -618,6 +703,18 @@ export default function OrderSummary() {
                         Discount Amount
                       </th>
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                        Remaining Store Credit
+                      </th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                        Used Store Credit
+                      </th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                        Returned Items
+                      </th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                        Items Taken in Exchange
+                      </th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
                         Total
                       </th>
                     </tr>
@@ -625,6 +722,11 @@ export default function OrderSummary() {
                   <tbody className="divide-y divide-border">
                     {filteredOrders.map((order) => {
                       const paymentData = processPaymentMethods(order);
+                      const remainingStoreCredit = getRemainingStoreCredit(order.customerEmail || '');
+                      const usedStoreCredit = getUsedStoreCreditForOrder(order);
+                      const returnedItems = getReturnedItemsForOrder(order.id);
+                      const exchangedItems = getExchangedItemsForOrder(order.id);
+                      
                       return (
                         <tr key={order.id} className="hover:bg-muted/30 transition-colors">
                           <td className="p-4 align-middle">
@@ -665,6 +767,26 @@ export default function OrderSummary() {
                           </td>
                           <td className="p-4 align-middle">
                             ₹{(parseFloat(order.discountAmount || '0')).toFixed(2)}
+                          </td>
+                          <td className="p-4 align-middle">
+                            ₹{remainingStoreCredit.toFixed(2)}
+                          </td>
+                          <td className="p-4 align-middle">
+                            ₹{usedStoreCredit.totalUsed.toFixed(2)}
+                          </td>
+                          <td className="p-4 align-middle">
+                            <div className="text-sm">
+                              {returnedItems.length > 0 
+                                ? returnedItems.map(item => `${item.quantity}x ${item.productName}`).join(', ')
+                                : 'None'}
+                            </div>
+                          </td>
+                          <td className="p-4 align-middle">
+                            <div className="text-sm">
+                              {exchangedItems.length > 0
+                                ? exchangedItems.map(item => `${item.quantity}x ${item.exchangeProductName || item.exchangeProductId}`).join(', ')
+                                : 'None'}
+                            </div>
                           </td>
                           <td className="p-4 align-middle font-medium">
                             ₹{parseFloat(order.totalAmount).toFixed(2)}
