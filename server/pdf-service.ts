@@ -261,6 +261,15 @@ export class PDFService {
           minute: '2-digit'
         }) : ''}`, 350, detailsStartY + 15, { align: 'right' });
         doc.text(`Payment: ${(order.paymentMethod || 'cash').replace(/_/g, ' ').toUpperCase()}`, 350, detailsStartY + 30, { align: 'right' });
+        
+        // Show payment breakdown if payment method is mixed
+        if (order.paymentMethod === 'mixed' && order.payments && order.payments.length > 0) {
+          let paymentY = detailsStartY + 45; // Start below the payment method line
+          order.payments.forEach((payment, index) => {
+            doc.text(`${payment.paymentMethod.replace(/_/g, ' ').toUpperCase()}: inr ${parseFloat(payment.amount).toFixed(2)}`, 350, paymentY, { align: 'right' });
+            paymentY += 15; // Move down for next payment method
+          });
+        }
 
         // Customer details (left side)
         doc.y = detailsStartY;

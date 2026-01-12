@@ -118,6 +118,7 @@ export type OrderItem = typeof orderItems.$inferSelect;
 
 export type OrderWithItems = Order & {
   items: OrderItem[];
+  payments?: PaymentDetail[];
 };
 
 /* ---------------------- STOCK MOVEMENTS ---------------------- */
@@ -234,6 +235,38 @@ export type ReturnItem = typeof returnItems.$inferSelect;
 
 export type ReturnWithItems = Return & {
   items: ReturnItem[];
+};
+
+/* ---------------------- PAYMENT DETAILS ---------------------- */
+export const paymentDetails = mysqlTable("payment_details", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  orderId: varchar("order_id", { length: 36 }).notNull(),
+  paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  paymentDate: timestamp("payment_date").default(sql`CURRENT_TIMESTAMP`),
+  transactionId: varchar("transaction_id", { length: 255 }),
+  status: varchar("status", { length: 50 }).default("completed").notNull(),
+  notes: text("notes"),
+});
+
+export const insertPaymentDetailSchema = createInsertSchema(paymentDetails, {
+  orderId: z.string().min(1, "Order ID is required"),
+  paymentMethod: z.enum(["cash", "credit_card", "debit_card", "upi", "bank_transfer", "store_credit"]),
+  amount: z.string().min(1, "Amount is required"),
+  status: z.enum(["pending", "completed", "failed", "refunded"]),
+  transactionId: z.string().optional(),
+  notes: z.string().optional(),
+}).omit({ 
+  id: true, 
+  paymentDate: true 
+});
+
+export type InsertPaymentDetail = z.infer<typeof insertPaymentDetailSchema>;
+export type PaymentDetail = typeof paymentDetails.$inferSelect;
+
+export type OrderWithPayments = Order & {
+  items: OrderItem[];
+  payments: PaymentDetail[];
 };
 
 /* ---------------------- DISCOUNT CODES ---------------------- */

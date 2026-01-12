@@ -21,37 +21,10 @@ import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { useQuery } from "@tanstack/react-query";
 import { formatInIST } from "../lib/utils";
+import type { OrderWithItems } from "@shared/schema";
 
 // Import the date range type from react-day-picker
 import { DateRange as DayPickerDateRange } from "react-day-picker";
-
-interface OrderItem {
-  id: string;
-  orderId: string;
-  productId: string;
-  productName: string;
-  sku: string;
-  quantity: number;
-  unitPrice: string;
-  subtotal: string;
-}
-
-interface Order {
-  id: string;
-  orderNumber: string;
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
-  status: string;
-  paymentMethod: string;
-  notes: string | null;
-  subTotal: string;
-  discountPercentage: string | null;
-  discountAmount: string | null;
-  totalAmount: string;
-  createdAt: string;
-  items: OrderItem[];
-}
 
 export default function OrderSummary() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -60,7 +33,7 @@ export default function OrderSummary() {
   const [dateRange, setDateRange] = useState<DayPickerDateRange | undefined>(undefined);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
-  const { data: orders = [], isLoading } = useQuery<Order[]>({
+  const { data: orders = [], isLoading } = useQuery<OrderWithItems[]>({
     queryKey: ["/api/orders"],
   });
 
@@ -76,7 +49,7 @@ export default function OrderSummary() {
     
     // Date filtering
     if (dateRange?.from && dateRange?.to) {
-      const orderDate = new Date(order.createdAt);
+      const orderDate = new Date(order.createdAt!);
       return matchesSearch && matchesStatus && matchesPaymentMethod && 
              orderDate >= dateRange.from && orderDate <= dateRange.to;
     }
@@ -96,6 +69,24 @@ export default function OrderSummary() {
   const formatPaymentMethod = (method: string) => {
     if (!method) return "Cash";
     return method.replace(/_/g, ' ').replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+  };
+
+  // Render payment breakdown for mixed payments
+  const renderPaymentBreakdown = (order: OrderWithItems) => {
+    if (order.paymentMethod === 'mixed' && order.payments && order.payments.length > 0) {
+      return (
+        <div className="text-xs space-y-1">
+          <div className="font-medium">Payment Breakdown:</div>
+          {order.payments.map((payment, index) => (
+            <div key={index} className="flex justify-between">
+              <span className="text-muted-foreground capitalize">{formatPaymentMethod(payment.paymentMethod)}:</span>
+              <span>₹{parseFloat(payment.amount).toFixed(2)}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return null;
   };
 
   // Format status display
@@ -211,7 +202,7 @@ export default function OrderSummary() {
       order.orderNumber,
       order.customerName,
       order.customerPhone ? `"${order.customerPhone}"` : '',
-      order.createdAt ? formatDateForExport(order.createdAt) : '"N/A"',
+      order.createdAt ? formatDateForExport(order.createdAt.toString()) : '"N/A"',
       order.items.length,
       parseFloat(order.totalAmount).toFixed(2),
       order.status,
@@ -264,7 +255,7 @@ export default function OrderSummary() {
       order.orderNumber,
       order.customerName,
       order.customerPhone ? `"${order.customerPhone}"` : '',
-      order.createdAt ? formatDateForExport(order.createdAt) : '"N/A"',
+      order.createdAt ? formatDateForExport(order.createdAt.toString()) : '"N/A"',
       order.items.length,
       parseFloat(order.totalAmount).toFixed(2),
       order.status,
@@ -622,7 +613,7 @@ export default function OrderSummary() {
                         <td className="p-4 align-middle">
                           <div className="text-sm">{order.items.length} items</div>
                           <div className="text-xs text-muted-foreground">
-                            {order.items.slice(0, 2).map(item => item.productName).join(', ')}
+                            {order.items.slice(0, 2).map((item: any) => item.productName).join(', ')}
                             {order.items.length > 2 && '...'}
                           </div>
                         </td>
@@ -636,6 +627,7 @@ export default function OrderSummary() {
                         </td>
                         <td className="p-4 align-middle">
                           <div className="capitalize">{formatPaymentMethod(order.paymentMethod)}</div>
+                          {renderPaymentBreakdown(order)}
                         </td>
                       </tr>
                     ))}

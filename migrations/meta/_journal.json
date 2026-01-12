@@ -57,6 +57,20 @@
       "when": 1768024414769,
       "tag": "0008_watery_ulik",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1768025000000,
+      "tag": "0009_create_payment_details_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1768207208907,
+      "tag": "0010_chubby_jimmy_woo",
+      "breakpoints": true
     }
   ]
 }

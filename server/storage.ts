@@ -8,6 +8,7 @@ import {
   returnItems,
   discountCodes,
   accounts,
+  paymentDetails,
 } from "@shared/schema.mysql";
 import type {
   InsertProduct,
@@ -28,6 +29,8 @@ import type {
   ReturnWithItems,
   DiscountCode,
   InsertDiscountCode,
+  PaymentDetail,
+  InsertPaymentDetail,
 } from "@shared/schema.mysql";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
@@ -78,6 +81,14 @@ export interface IStorage {
   createDiscountCode(data: InsertDiscountCode): Promise<DiscountCode>;
   useDiscountCode(code: string, amountUsed: string): Promise<{ updated: DiscountCode | null; wasDeleted: boolean; wasFound: boolean; error?: string }>;
   deleteDiscountCode(id: string): Promise<boolean>;
+
+  // Payment Details
+  getPaymentDetails(orderId: string): Promise<PaymentDetail[]>;
+  createPaymentDetail(payment: InsertPaymentDetail): Promise<PaymentDetail>;
+  updatePaymentDetail(id: string, payment: Partial<InsertPaymentDetail>): Promise<PaymentDetail | null>;
+  deletePaymentDetail(id: string): Promise<boolean>;
+  getPaymentsByOrder(orderId: string): Promise<PaymentDetail[]>;
+  getTotalPaidForOrder(orderId: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -199,7 +210,8 @@ export class DatabaseStorage implements IStorage {
     return await Promise.all(
       allOrders.map(async (order) => {
         const items = await this.getOrderItems(order.id);
-        return { ...order, items };
+        const payments = await this.getPaymentsByOrder(order.id);
+        return { ...order, items, payments };
       })
     );
   }
@@ -209,7 +221,8 @@ export class DatabaseStorage implements IStorage {
     if (result.length === 0) return undefined;
 
     const items = await this.getOrderItems(id);
-    return { ...result[0], items };
+    const payments = await this.getPaymentsByOrder(id);
+    return { ...result[0], items, payments };
   }
 
   async getOrdersByCustomerEmail(email: string): Promise<OrderWithItems[]> {
@@ -217,7 +230,8 @@ export class DatabaseStorage implements IStorage {
     return await Promise.all(
       result.map(async (order) => {
         const items = await this.getOrderItems(order.id);
-        return { ...order, items };
+        const payments = await this.getPaymentsByOrder(order.id);
+        return { ...order, items, payments };
       })
     );
   }
@@ -674,6 +688,45 @@ export class DatabaseStorage implements IStorage {
 
     const statsResult = await db.select().from(stockStats).where(eq(stockStats.id, id));
     return statsResult[0];
+  }
+
+  // Payment Details
+  async getPaymentDetails(orderId: string): Promise<PaymentDetail[]> {
+    return await db.select().from(paymentDetails).where(eq(paymentDetails.orderId, orderId));
+  }
+
+  async createPaymentDetail(payment: InsertPaymentDetail): Promise<PaymentDetail> {
+    const id = randomUUID();
+    await db.insert(paymentDetails).values({
+      ...payment,
+      id,
+    });
+
+    const paymentResult = await db.select().from(paymentDetails).where(eq(paymentDetails.id, id));
+    return paymentResult[0];
+  }
+
+  async updatePaymentDetail(id: string, payment: Partial<InsertPaymentDetail>): Promise<PaymentDetail | null> {
+    await db.update(paymentDetails)
+      .set(payment)
+      .where(eq(paymentDetails.id, id));
+
+    const result = await db.select().from(paymentDetails).where(eq(paymentDetails.id, id));
+    return result[0] || null;
+  }
+
+  async deletePaymentDetail(id: string): Promise<boolean> {
+    await db.delete(paymentDetails).where(eq(paymentDetails.id, id));
+    return true;
+  }
+
+  async getPaymentsByOrder(orderId: string): Promise<PaymentDetail[]> {
+    return await db.select().from(paymentDetails).where(eq(paymentDetails.orderId, orderId));
+  }
+
+  async getTotalPaidForOrder(orderId: string): Promise<number> {
+    const payments = await this.getPaymentsByOrder(orderId);
+    return payments.reduce((sum, payment) => sum + parseFloat(payment.amount), 0);
   }
 }
 

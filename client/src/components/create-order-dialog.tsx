@@ -39,8 +39,9 @@ import {
 } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { insertOrderSchema, type Product, type InsertOrder } from "@shared/schema";
+import { insertOrderSchema, type Product, type InsertOrder, type InsertPaymentDetail } from "@shared/schema";
 import { QRScannerDialog } from "./qr-scanner-dialog";
+import { PartialPaymentSelector } from "./partial-payment-selector";
 
 interface OrderItem {
   productId: string;
@@ -62,6 +63,8 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
   const [searchOpen, setSearchOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [discountMethod, setDiscountMethod] = useState<'none' | 'percentage' | 'amount' | 'total'>('none');
+  const [partialPayments, setPartialPayments] = useState<InsertPaymentDetail[]>([]);
+  const [showPartialPayment, setShowPartialPayment] = useState(false);
   const { toast } = useToast();
 
   // Auto-add scanned product
@@ -91,12 +94,48 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
     },
   });
 
+  // Watch for payment method changes to show partial payment selector
+  useEffect(() => {
+    const subscription = form.watch((value, { name }) => {
+      if (name === 'paymentMethod' && value.paymentMethod === 'mixed') {
+        setShowPartialPayment(true);
+      } else if (name === 'paymentMethod' && value.paymentMethod !== 'mixed') {
+        setShowPartialPayment(false);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [form]);
+
   const createMutation = useMutation({
-    mutationFn: async (data: InsertOrder & { items: OrderItem[] }) => {
-      return await apiRequest("POST", "/api/orders", data);
+    mutationFn: async (data: InsertOrder & { items: OrderItem[] } & { partialPayments?: InsertPaymentDetail[] }) => {
+      const { partialPayments: payments, ...orderData } = data;
+      const resultResponse = await apiRequest("POST", "/api/orders", orderData);
+      const result = await resultResponse.json(); // Get the actual order data
+      
+      // If there are partial payments, create them after the order is created
+      if (payments && payments.length > 0) {
+        console.log("DEBUG: Creating payment details for order:", result.id, "payments:", payments);
+        for (const payment of payments) {
+          const paymentResponse = await apiRequest("POST", "/api/payment-details", {
+            ...payment,
+            orderId: result.id // Use the created order's ID
+          });
+          
+          if (!paymentResponse.ok) {
+            const errorText = await paymentResponse.text();
+            console.error("Failed to create payment detail:", errorText);
+            throw new Error(`Failed to create payment detail: ${errorText}`);
+          }
+          
+          console.log("DEBUG: Payment detail created successfully:", await paymentResponse.json());
+        }
+      }
+      
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/returns"] }); // Also invalidate returns since they're used in order cards
       toast({
         title: "Success",
         description: "Order created successfully",
@@ -104,6 +143,8 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
       onOpenChange(false);
       form.reset();
       setOrderItems([]);
+      setPartialPayments([]); // Reset partial payments
+      setShowPartialPayment(false); // Hide partial payment section
     },
     onError: () => {
       toast({
@@ -256,6 +297,27 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
       totalAmount: finalTotal.toFixed(2),
       items: orderItems,
     };
+    
+    // Handle partial payments if payment method is mixed
+    if (data.paymentMethod === 'mixed' && partialPayments.length > 0) {
+      // Calculate total from partial payments to verify it matches the order total
+      const totalFromPartialPayments = partialPayments.reduce(
+        (sum, payment) => sum + parseFloat(payment.amount), 
+        0
+      );
+      
+      if (Math.abs(totalFromPartialPayments - finalTotal) > 0.01) { // Allow small floating point differences
+        toast({
+          title: "Error",
+          description: `Partial payments total (₹${totalFromPartialPayments.toFixed(2)}) must equal order total (₹${finalTotal.toFixed(2)})`,
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Add partial payments to order data
+      (orderData as any).partialPayments = partialPayments;
+    }
     
     console.log("DEBUG: Final order data being sent:", orderData);
     createMutation.mutate(orderData);
@@ -479,6 +541,16 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
               </div>
             </div>
           </div>
+
+          {/* Show partial payment selector when payment method is mixed */}
+          {showPartialPayment && (
+            <div className="space-y-4">
+              <PartialPaymentSelector 
+                totalAmount={parseFloat(calculateTotal())}
+                onPaymentsChange={setPartialPayments}
+              />
+            </div>
+          )}
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">

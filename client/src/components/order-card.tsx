@@ -170,9 +170,21 @@ export function OrderCard({ order }: OrderCardProps) {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Payment Method</p>
-                <p className="font-semibold capitalize">
-                  {(order.paymentMethod || 'cash').replace(/_/g, ' ')}
-                </p>
+                <div className="flex flex-col">
+                  <p className="font-semibold capitalize">
+                    {(order.paymentMethod || 'cash').replace(/_/g, ' ')}
+                  </p>
+                  {order.paymentMethod === 'mixed' && order.payments && order.payments.length > 0 && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {order.payments.map((payment, idx) => (
+                        <div key={idx} className="flex justify-between">
+                          <span className="capitalize">{payment.paymentMethod.replace(/_/g, ' ')}:</span>
+                          <span>₹{parseFloat(payment.amount).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
           </div>
         </div>

@@ -13,6 +13,7 @@ import {
   stockStats,
   discountCodes,
   accounts,
+  paymentDetails,
   insertProductSchema,
   insertOrderSchema,
   insertOrderItemSchema,
@@ -20,6 +21,7 @@ import {
   insertReturnItemSchema,
   insertStockMovementSchema,
   insertDiscountCodeSchema,
+  insertPaymentDetailSchema,
 } from "@shared/schema.mysql";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
@@ -630,6 +632,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete discount code" });
+    }
+  });
+
+  // Payment Details routes
+  app.get("/api/payment-details", async (req, res) => {
+    try {
+      const orderId = req.query.orderId as string | undefined;
+      if (!orderId) {
+        return res.status(400).json({ error: "Order ID is required" });
+      }
+      const payments = await storage.getPaymentDetails(orderId);
+      res.json(payments);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch payment details" });
+    }
+  });
+
+  app.get("/api/orders/:id/payments", async (req, res) => {
+    try {
+      const payments = await storage.getPaymentsByOrder(req.params.id);
+      res.json(payments);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch payments for order" });
+    }
+  });
+
+  app.get("/api/orders/:id/total-paid", async (req, res) => {
+    try {
+      const total = await storage.getTotalPaidForOrder(req.params.id);
+      res.json({ total });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to calculate total paid for order" });
+    }
+  });
+
+  app.post("/api/payment-details", async (req, res) => {
+    try {
+      const parsed = insertPaymentDetailSchema.safeParse(req.body);
+      if (!parsed.success) {
+        const error = fromZodError(parsed.error);
+        return res.status(400).json({ error: error.message });
+      }
+
+      const payment = await storage.createPaymentDetail(parsed.data);
+      res.status(201).json(payment);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create payment detail" });
     }
   });
 
