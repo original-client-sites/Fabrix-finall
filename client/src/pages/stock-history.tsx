@@ -207,6 +207,22 @@ export default function StockHistory() {
     });
   }, [products, stockStats]);
 
+  // Calculate statistics from the Product Stock Overview table data
+  const tableStatistics = useMemo(() => {
+    // Calculate totals from the product stock data table
+    const totalAvailable = productStockData.reduce((sum, product) => sum + product.available, 0);
+    const totalSold = productStockData.reduce((sum, product) => sum + product.sold, 0);
+    const totalReturned = productStockData.reduce((sum, product) => sum + product.returned, 0);
+    const totalPurchased = productStockData.reduce((sum, product) => sum + product.purchased, 0);
+    
+    return {
+      available: totalAvailable,
+      sold: totalSold,
+      returned: totalReturned,
+      purchased: totalPurchased,
+    };
+  }, [productStockData]);
+
   // Prepare purchased stock data for separate table
   const purchasedStockData = useMemo(() => {
     return productStockData.filter(p => p.purchased > 0);
@@ -406,7 +422,7 @@ export default function StockHistory() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold" data-testid="stat-available">
-                  {statistics.available.toLocaleString()}
+                  {tableStatistics.available.toLocaleString()}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Total units in inventory
@@ -423,7 +439,7 @@ export default function StockHistory() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-red-600" data-testid="stat-sold">
-                  {statistics.sold.toLocaleString()}
+                  {tableStatistics.sold.toLocaleString()}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Units removed from inventory
@@ -440,7 +456,7 @@ export default function StockHistory() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-blue-600" data-testid="stat-returned">
-                  {statistics.returned.toLocaleString()}
+                  {tableStatistics.returned.toLocaleString()}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Units returned to inventory
@@ -457,7 +473,7 @@ export default function StockHistory() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-green-600" data-testid="stat-purchased">
-                  {statistics.purchased.toLocaleString()}
+                  {tableStatistics.purchased.toLocaleString()}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Units added to inventory via purchase
