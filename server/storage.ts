@@ -168,6 +168,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateProduct(id: string, product: InsertProduct): Promise<Product | undefined> {
+    // Get the current product to compare stock quantities
+    const currentProduct = await this.getProduct(id);
+    if (!currentProduct) return undefined;
+    
     const productData: any = {
       galleryImages: product.galleryImages ? JSON.stringify(product.galleryImages) : null,
       tags: product.tags ? JSON.stringify(product.tags) : null,
@@ -186,6 +190,25 @@ export class DatabaseStorage implements IStorage {
 
     const result = await db.select().from(products).where(eq(products.id, id));
     if (result.length === 0) return undefined;
+    
+    // Handle stock quantity adjustment
+    if (product.stockQuantity !== undefined && product.stockQuantity !== currentProduct.stockQuantity) {
+      const stockDifference = product.stockQuantity - currentProduct.stockQuantity;
+      
+      if (stockDifference !== 0) {
+        // Create a stock movement record for the adjustment
+        await this.createStockMovement({
+          productId: id,
+          productName: currentProduct.productName,
+          sku: currentProduct.sku,
+          type: stockDifference > 0 ? 'in' : 'out',
+          quantity: Math.abs(stockDifference),
+          reason: stockDifference > 0 ? 'adjustment' : 'purchase return',
+          notes: `Stock adjustment from ${currentProduct.stockQuantity} to ${product.stockQuantity}`,
+        });
+      }
+    }
+    
     return {
       ...result[0],
       galleryImages: result[0].galleryImages ? JSON.parse(result[0].galleryImages) : [],
@@ -471,9 +494,9 @@ export class DatabaseStorage implements IStorage {
     for (const item of items) {
       const itemId = randomUUID();
       await db.insert(returnItems).values({
-        id: itemId,
-        returnId,
         ...item,
+        id: itemId,
+        returnId: returnId,
       });
 
       const returnItemResult = await db.select().from(returnItems).where(eq(returnItems.id, itemId));

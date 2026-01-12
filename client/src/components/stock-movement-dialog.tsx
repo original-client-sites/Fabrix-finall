@@ -205,6 +205,7 @@ export function StockMovementDialog({ open, onOpenChange, product }: StockMoveme
                   <>
                     <SelectItem value="Sale">Sale</SelectItem>
                     <SelectItem value="Damaged">Damaged/Defective</SelectItem>
+                    <SelectItem value="Purchase Return">Purchase Return</SelectItem>
                     <SelectItem value="Transfer Out">Transfer Out</SelectItem>
                     <SelectItem value="Lost">Lost/Stolen</SelectItem>
                   </>
@@ -214,6 +215,7 @@ export function StockMovementDialog({ open, onOpenChange, product }: StockMoveme
                     <SelectItem value="Physical Count">Physical Count</SelectItem>
                     <SelectItem value="Correction">Correction</SelectItem>
                     <SelectItem value="Initial Stock">Initial Stock</SelectItem>
+                    <SelectItem value="Purchase Return">Purchase Return</SelectItem>
                   </>
                 )}
               </SelectContent>

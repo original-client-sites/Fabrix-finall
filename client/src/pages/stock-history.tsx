@@ -26,7 +26,7 @@ import type { StockMovement, Product } from "@shared/schema";
 import { format } from "date-fns";
 import { formatInIST } from "@/lib/utils";
 
-type SortField = "productName" | "sku" | "category" | "available" | "sold" | "returned" | "purchased" | "initialStock";
+type SortField = "productName" | "sku" | "category" | "available" | "sold" | "returned" | "purchaseReturn" | "purchased" | "initialStock";
 type SortOrder = "asc" | "desc";
 
 interface StockStats {
@@ -34,6 +34,7 @@ interface StockStats {
   available: number;
   sold: number;
   returned: number;
+  purchaseReturn: number;
   purchased: number;
   initialStock: number;
 }
@@ -119,6 +120,7 @@ export default function StockHistory() {
         available: p.stockQuantity,
         sold: 0,
         returned: 0,
+        purchaseReturn: 0,
         purchased: 0,
         initialStock: 0,
       });
@@ -143,7 +145,13 @@ export default function StockHistory() {
         case "out":
           if (reasonLower === "sale") {
             currentStats.sold += m.quantity;
+          } else if (reasonLower === "purchase return" || reasonLower === "supplier return") {
+            currentStats.purchaseReturn += m.quantity;
           }
+          break;
+        case "adjustment":
+          // For adjustment movements, these are direct quantity changes
+          // Typically used for setting stock to a specific value
           break;
       }
     });
@@ -172,16 +180,11 @@ export default function StockHistory() {
       }
     });
 
-    // Update available to match formula: available = initialStock + purchased + returned - sold
+    // Calculate available stock using the proper formula
+    // available = initialStock + purchased - sold + returned - purchaseReturn
+    // This ensures purchase returns are properly deducted from available stock
     Array.from(statsMap.values()).forEach(stats => {
-      // If initialStock is 0, use the product's current stock quantity as initial
-      if (stats.initialStock === 0) {
-        const product = products.find(p => p.id === stats.productId);
-        if (product) {
-          stats.initialStock = product.stockQuantity;
-        }
-      }
-      stats.available = stats.initialStock + stats.purchased + stats.returned - stats.sold;
+      stats.available = stats.initialStock + stats.purchased - stats.sold + stats.returned - stats.purchaseReturn;
     });
 
     return Array.from(statsMap.values());
@@ -197,6 +200,7 @@ export default function StockHistory() {
         available: stats?.available || 0,
         sold: stats?.sold || 0,
         returned: stats?.returned || 0,
+        purchaseReturn: stats?.purchaseReturn || 0,
         purchased: stats?.purchased || 0,
         initialStock: stats?.initialStock || 0,
       };
@@ -286,6 +290,10 @@ export default function StockHistory() {
           aValue = a.returned;
           bValue = b.returned;
           break;
+        case "purchaseReturn":
+          aValue = a.purchaseReturn;
+          bValue = b.purchaseReturn;
+          break;
         case "purchased":
           aValue = a.purchased;
           bValue = b.purchased;
@@ -355,7 +363,8 @@ export default function StockHistory() {
     console.log("Scanned data:", scannedData);
     // For now, let's assume we can directly use it to open the stock movement dialog
     // In a real scenario, you'd fetch product details here
-    setSelectedProduct({ id: scannedData, name: `Product ${scannedData}`, sku: scannedData }); // Mock product data
+    // setSelectedProduct({ id: scannedData, productName: `Product ${scannedData}`, sku: scannedData }); // Mock product data
+    // For now, skip setting a mock product as it's not used in the dialog
     setIsStockDialogOpen(true);
     setIsScannerOpen(false);
   };
@@ -564,12 +573,22 @@ export default function StockHistory() {
                           <SortIcon field="returned" />
                         </Button>
                       </TableHead>
+                      <TableHead className="text-right">
+                        <Button
+                          variant="ghost"
+                          onClick={() => handleSort("purchaseReturn")}
+                          className="hover:bg-transparent p-0 h-auto font-medium ml-auto flex"
+                        >
+                          Purchase Return
+                          <SortIcon field="purchaseReturn" />
+                        </Button>
+                      </TableHead>
                       </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredAndSortedProducts.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                           No products found
                         </TableCell>
                       </TableRow>
@@ -595,6 +614,9 @@ export default function StockHistory() {
                           </TableCell>
                           <TableCell className="text-right">
                             <span className="text-blue-600 font-semibold">{product.returned}</span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className="text-orange-600 font-semibold">{product.purchaseReturn}</span>
                           </TableCell>
                         </TableRow>
                       ))
