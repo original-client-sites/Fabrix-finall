@@ -355,7 +355,7 @@ export default function OrderSummary() {
         .replace('T', ' ')
         .replace('Z', '')}"`
     : '"N/A"',
-        order.items.map(item => item.productName).join(', '),
+        `"${order.items.map(item => `${item.quantity} ${item.productName}`).join(', ')} (Total: ${order.items.reduce((sum, item) => sum + item.quantity, 0)})"`,
         paymentData.cash.toFixed(2),
         paymentData.creditCard.toFixed(2),
         paymentData.debitCash.toFixed(2),
@@ -764,7 +764,7 @@ export default function OrderSummary() {
                           </td>
                           <td className="p-4 align-middle">
                             <div className="text-sm">
-                              {order.items.map(item => item.productName).join(', ')}
+                              {order.items.map(item => `${item.quantity} ${item.productName}`).join(', ')} (Total: {order.items.reduce((sum, item) => sum + item.quantity, 0)})
                             </div>
                           </td>
                           <td className="p-4 align-middle">
