@@ -20,7 +20,7 @@ import { CalendarIcon, Download, Filter, X, FileText, FileSpreadsheet } from "lu
 // Removed date-fns format import as dates are now shown as raw strings
 import { Calendar } from "@/components/ui/calendar";
 import { useQuery } from "@tanstack/react-query";
-import type { OrderWithItems, PaymentDetail, ReturnWithItems, DiscountCode } from "@shared/schema";
+import type { OrderWithItems, PaymentDetail, ReturnWithItems, DiscountCode, Product } from "@shared/schema";
 
 // Import the date range type from react-day-picker
 import { DateRange as DayPickerDateRange } from "react-day-picker";
@@ -38,6 +38,10 @@ export default function OrderSummary() {
   
   const { data: returns = [] } = useQuery<ReturnWithItems[]>({
     queryKey: ["/api/returns"],
+  });
+  
+  const { data: products = [] } = useQuery<Product[]>({
+    queryKey: ["/api/products"],
   });
   
   const { data: discountCodes = [] } = useQuery({
@@ -252,6 +256,42 @@ export default function OrderSummary() {
     }
   };
 
+  // Function to get product category by product name
+  const getProductCategoryByName = (productName: string) => {
+    const product = products.find(p => p.productName === productName);
+    return product ? product.category : 'Uncategorized';
+  };
+
+  // Function to get all unique categories from both orders and products
+  const getAllCategories = () => {
+    const categories = new Set<string>();
+    
+    // Add categories from all orders
+    orders.forEach(order => {
+      order.items.forEach(item => {
+        const category = getProductCategoryByName(item.productName);
+        categories.add(category);
+      });
+    });
+    
+    // Also add all possible categories from the products table
+    products.forEach(product => {
+      categories.add(product.category);
+    });
+    
+    return Array.from(categories).sort();
+  };
+
+  // Function to get items for a specific category in an order
+  const getItemsForCategory = (order: OrderWithItems, categoryName: string) => {
+    const items = order.items.filter(item => {
+      const category = getProductCategoryByName(item.productName);
+      return category === categoryName;
+    });
+    
+    return items.map(item => `${item.quantity} ${item.productName}`).join(', ');
+  };
+
   // Function to aggregate daily payment data
   const getDailyPaymentSummary = () => {
     const dailyPayments: Record<string, Record<string, number>> = {};
@@ -335,7 +375,25 @@ export default function OrderSummary() {
   };
   
   const exportOrderSummary = (format: 'csv' | 'excel') => {
-    const headers = ['Order #', 'Customer Name', 'Phone Number', 'Date', 'Items', 'Cash', 'Credit Card', 'Debit Cash', 'UPI', 'Discount Amount', 'Remaining Store Credit', 'Used Store Credit', 'Returned Items', 'Items Taken in Exchange', 'Total'];
+    // Get all categories from ALL orders to ensure all possible category columns exist
+    const allCategories = getAllCategories();
+    const headers = [
+      'Order #', 
+      'Customer Name', 
+      'Phone Number', 
+      'Date', 
+      ...allCategories, // Dynamic category columns
+      'Cash', 
+      'Credit Card', 
+      'Debit Cash', 
+      'UPI', 
+      'Discount Amount', 
+      'Remaining Store Credit', 
+      'Used Store Credit', 
+      'Returned Items', 
+      'Items Taken in Exchange', 
+      'Total'
+    ];
     const rows = filteredOrders.map(order => {
       const paymentData = processPaymentMethods(order);
       const remainingStoreCredit = getRemainingStoreCredit(order.customerEmail || '');
@@ -343,19 +401,16 @@ export default function OrderSummary() {
       const returnedItems = getReturnedItemsForOrder(order.id);
       const exchangedItems = getExchangedItemsForOrder(order.id);
       
+      // Use the same allCategories as defined at the function level
       return [
         order.orderNumber,
         order.customerName,
         order.customerPhone ? `"${order.customerPhone}"` : '',
         order.date
-    ? `"${(typeof order.date === 'string'
-        ? order.date
-        : order.date.toISOString()
-      )
-        .replace('T', ' ')
-        .replace('Z', '')}"`
+    ? `"${new Date(order.date instanceof Date ? order.date : new Date(order.date)).toISOString().split('T')[0]}"`
     : '"N/A"',
-        `"${order.items.map(item => `${item.quantity} ${item.productName}`).join(', ')} (Total: ${order.items.reduce((sum, item) => sum + item.quantity, 0)})"`,
+        // Add each category column
+        ...allCategories.map(category => `"${getItemsForCategory(order, category)}"`),
         paymentData.cash.toFixed(2),
         paymentData.creditCard.toFixed(2),
         paymentData.debitCash.toFixed(2),
@@ -691,9 +746,11 @@ export default function OrderSummary() {
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
                         Date
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
-                        Items
-                      </th>
+                      {getAllCategories().map(category => (
+                        <th key={`header-${category}`} className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                          {category}
+                        </th>
+                      ))}
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
                         Cash
                       </th>
@@ -753,20 +810,17 @@ export default function OrderSummary() {
                           <td className="p-4 align-middle">
                             <div className="text-sm">
                               {order.date
-                                ? (typeof order.date === 'string'
-                                    ? order.date
-                                    : order.date.toISOString()
-                                  )
-                                    .replace('T', ' ')
-                                    .replace('Z', '')
+                                ? new Date(order.date instanceof Date ? order.date : new Date(order.date)).toISOString().split('T')[0]
                                 : 'N/A'}
                             </div>
                           </td>
-                          <td className="p-4 align-middle">
-                            <div className="text-sm">
-                              {order.items.map(item => `${item.quantity} ${item.productName}`).join(', ')} (Total: {order.items.reduce((sum, item) => sum + item.quantity, 0)})
-                            </div>
-                          </td>
+                          {getAllCategories().map(category => (
+                            <td key={`${order.id}-${category}`} className="p-4 align-middle">
+                              <div className="text-sm">
+                                {getItemsForCategory(order, category)}
+                              </div>
+                            </td>
+                          ))}
                           <td className="p-4 align-middle">
                             ₹{paymentData.cash.toFixed(2)}
                           </td>
