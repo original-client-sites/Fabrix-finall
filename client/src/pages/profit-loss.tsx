@@ -27,8 +27,7 @@ import {
 } from "@/components/ui/chart";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer } from "recharts";
 import type { Product, OrderWithItems, ReturnWithItems, StockMovement, Account } from "@shared/schema.mysql";
-import { format, startOfDay, startOfHour, startOfMonth, startOfYear, subDays, subMonths, subYears } from "date-fns";
-import { formatInIST } from "@/lib/utils";
+import { format, parseISO, startOfDay, startOfHour, startOfMonth, startOfYear, subDays, subMonths, subYears } from "date-fns";
 
 type TimeRange = "hourly" | "daily" | "monthly" | "yearly";
 
@@ -129,19 +128,22 @@ export default function ProfitLoss() {
 
       // Filter orders for this period
       const periodOrders = orders.filter(o => {
-        const orderDate = new Date(o.createdAt!);
+        if (!o.date) return false;
+        const orderDate = typeof o.date === 'string' ? parseISO(o.date) : new Date(o.date);
         return orderDate >= period && orderDate < nextPeriod;
       });
 
       // Filter returns for this period
       const periodReturns = returns.filter(r => {
-        const returnDate = new Date(r.createdAt!);
+        if (!r.createdAt) return false;
+        const returnDate = typeof r.createdAt === 'string' ? parseISO(r.createdAt) : new Date(r.createdAt);
         return returnDate >= period && returnDate < nextPeriod;
       });
 
       // Filter purchase accounts for this period
       const periodPurchases = accounts.filter(a => {
-        const txDate = new Date(a.transactionDate!);
+        if (!a.transactionDate) return false;
+        const txDate = typeof a.transactionDate === 'string' ? parseISO(a.transactionDate) : new Date(a.transactionDate);
         return a.transactionType === "purchase" && txDate >= period && txDate < nextPeriod;
       });
 
@@ -174,6 +176,20 @@ export default function ProfitLoss() {
         });
       });
 
+      // Calculate purchase return costs for this period
+      const periodPurchaseReturns = movements.filter(m => {
+        if (!m.createdAt) return false;
+        if (m.type !== "out" || (m.reason !== "purchase return" && m.reason !== "supplier return")) return false;
+        const movementDate = typeof m.createdAt === 'string' ? parseISO(m.createdAt) : new Date(m.createdAt);
+        return movementDate >= period && movementDate < nextPeriod;
+      });
+      
+      const purchaseReturnCost = periodPurchaseReturns.reduce((sum, m) => {
+        const product = productMap.get(m.productId);
+        const costPrice = product?.costPrice ? parseFloat(product.costPrice.toString()) : 0;
+        return sum + (costPrice * m.quantity);
+      }, 0);
+
       // Add purchase costs and potential profit from accounts
       const purchaseCost = periodPurchases.reduce((sum, acc) => {
         return sum + parseFloat(acc.cost.toString());
@@ -184,11 +200,11 @@ export default function ProfitLoss() {
       }, 0);
 
       const netRevenue = revenue - refundAmount;
-      const netCost = cogs - returnedCost + purchaseCost;
+      const netCost = cogs - returnedCost + purchaseCost - purchaseReturnCost; // Subtract purchase return costs
       const profit = netRevenue - netCost + purchaseProfit;
 
       return {
-        period: formatInIST(period, formatString),
+        period: format(period, formatString),
         revenue: parseFloat(netRevenue.toFixed(2)),
         cost: parseFloat(netCost.toFixed(2)),
         profit: parseFloat(profit.toFixed(2)),
@@ -260,21 +276,30 @@ export default function ProfitLoss() {
     today.setHours(0, 0, 0, 0);
     
     const todaysOrders = orders.filter(order => {
-      const orderDate = new Date(order.createdAt!);
-      orderDate.setHours(0, 0, 0, 0);
-      return orderDate.getTime() === today.getTime();
+      if (!order.date) return false;
+      const orderDate = typeof order.date === 'string' ? parseISO(order.date) : new Date(order.date);
+      // Normalize both dates to same day by comparing year, month, and date
+      return orderDate.getFullYear() === today.getFullYear() &&
+             orderDate.getMonth() === today.getMonth() &&
+             orderDate.getDate() === today.getDate();
     });
     
     const todaysReturns = returns.filter(ret => {
-      const returnDate = new Date(ret.createdAt!);
-      returnDate.setHours(0, 0, 0, 0);
-      return returnDate.getTime() === today.getTime();
+      if (!ret.createdAt) return false;
+      const returnDate = new Date(ret.createdAt);
+      // Normalize both dates to same day by comparing year, month, and date
+      return returnDate.getFullYear() === today.getFullYear() &&
+             returnDate.getMonth() === today.getMonth() &&
+             returnDate.getDate() === today.getDate();
     });
     
     const todaysAccounts = accounts.filter(acc => {
-      const txDate = new Date(acc.transactionDate!);
-      txDate.setHours(0, 0, 0, 0);
-      return txDate.getTime() === today.getTime();
+      if (!acc.transactionDate) return false;
+      const txDate = new Date(acc.transactionDate);
+      // Normalize both dates to same day by comparing year, month, and date
+      return txDate.getFullYear() === today.getFullYear() &&
+             txDate.getMonth() === today.getMonth() &&
+             txDate.getDate() === today.getDate();
     });
     
     // Calculate today's revenue from orders
@@ -287,12 +312,30 @@ export default function ProfitLoss() {
       return sum + (ret.refundAmount ? parseFloat(ret.refundAmount.toString()) : 0);
     }, 0);
     
+    // Calculate today's purchase return costs
+    const todaysPurchaseReturns = movements.filter(m => {
+      if (!m.createdAt) return false;
+      if (m.type !== "out" || (m.reason !== "purchase return" && m.reason !== "supplier return")) return false;
+      const movementDate = new Date(m.createdAt);
+      // Normalize both dates to same day by comparing year, month, and date
+      return movementDate.getFullYear() === today.getFullYear() &&
+             movementDate.getMonth() === today.getMonth() &&
+             movementDate.getDate() === today.getDate();
+    });
+    
+    const purchaseReturnCost = todaysPurchaseReturns.reduce((sum, m) => {
+      const product = productMap.get(m.productId);
+      const costPrice = product?.costPrice ? parseFloat(product.costPrice.toString()) : 0;
+      return sum + (costPrice * m.quantity);
+    }, 0);
+    
     // Calculate today's costs from purchase accounts
-    const cost = todaysAccounts.filter(a => a.transactionType === 'purchase').reduce((sum, acc) => {
+    const purchaseCost = todaysAccounts.filter(a => a.transactionType === 'purchase').reduce((sum, acc) => {
       return sum + parseFloat(acc.cost.toString());
     }, 0);
     
-    // Calculate today's profit
+    // Calculate today's profit (adjusted to include purchase return costs)
+    const cost = purchaseCost - purchaseReturnCost; // Subtract purchase return costs
     const profit = revenue - refundAmount - cost;
     
     // Payment methods breakdown for today
@@ -357,6 +400,15 @@ export default function ProfitLoss() {
         return sum + parseFloat(a.cost.toString());
       }, 0);
 
+    // Calculate purchase returns (items returned to suppliers)
+    const purchaseReturnCost = movements
+      .filter(m => m.type === "out" && (m.reason === "purchase return" || m.reason === "supplier return"))
+      .reduce((sum, m) => {
+        const product = productMap.get(m.productId);
+        const costPrice = product?.costPrice ? parseFloat(product.costPrice.toString()) : 0;
+        return sum + (costPrice * m.quantity);
+      }, 0);
+
     // Opening Stock = Total value of initial inventory (can be calculated from first movements or set manually)
     // For now, we'll calculate it based on current stock minus net changes
     const openingStock = products.reduce((sum, product) => {
@@ -379,8 +431,12 @@ export default function ProfitLoss() {
         .filter(m => m.productId === product.id && m.type === "in" && m.reason === "purchase")
         .reduce((qty, m) => qty + m.quantity, 0);
       
-      // Opening stock = Current stock - Purchase + Sales - Returns
-      const openingQty = currentStock - purchasedQty + soldQty - returnedQty;
+      const purchaseReturnQty = movements
+        .filter(m => m.productId === product.id && m.type === "out" && (m.reason === "purchase return" || m.reason === "supplier return"))
+        .reduce((qty, m) => qty + m.quantity, 0);
+      
+      // Opening stock = Current stock - Purchase + Sales - Returns + Purchase Returns
+      const openingQty = currentStock - purchasedQty + soldQty - returnedQty + purchaseReturnQty;
       return sum + (openingQty * costPrice);
     }, 0);
 
@@ -397,8 +453,9 @@ export default function ProfitLoss() {
     // For now, set to 0 as these aren't tracked separately
     const directExpenses = 0;
 
-    // Formula: Gross Profit = Sales + Closing Stock - Opening Stock - Purchase - Direct Expenses
-    const grossProfit = netSales + closingStock - openingStock - purchase - directExpenses;
+    // Formula: Gross Profit = Sales + Closing Stock - Opening Stock - (Purchase - Purchase Returns) - Direct Expenses
+    const adjustedPurchase = purchase - purchaseReturnCost;
+    const grossProfit = netSales + closingStock - openingStock - adjustedPurchase - directExpenses;
     const grossProfitValue = grossProfit > 0 ? grossProfit : 0;
     const grossLossValue = grossProfit < 0 ? Math.abs(grossProfit) : 0;
 
@@ -417,6 +474,7 @@ export default function ProfitLoss() {
 
     const totalOrders = profitData.reduce((sum, d) => sum + d.orders, 0);
     const totalReturns = profitData.reduce((sum, d) => sum + d.returns, 0);
+    const totalPurchaseReturns = movements.filter(m => m.type === "out" && (m.reason === "purchase return" || m.reason === "supplier return")).length;
     const returnRate = totalOrders > 0 ? (totalReturns / totalOrders) * 100 : 0;
 
     return {
@@ -424,6 +482,8 @@ export default function ProfitLoss() {
       totalCost,
       sales: netSales,
       purchase,
+      purchaseReturnCost,
+      adjustedPurchase,
       openingStock,
       closingStock,
       directExpenses,
@@ -436,6 +496,7 @@ export default function ProfitLoss() {
       profitMargin,
       totalOrders,
       totalReturns,
+      totalPurchaseReturns,
       returnRate,
     };
   }, [profitData, accounts, productMap, orders, returns, products, movements]);
@@ -464,11 +525,30 @@ export default function ProfitLoss() {
       });
     });
 
+    // Add purchase return costs by category
+    movements.forEach(movement => {
+      if (movement.type === "out" && (movement.reason === "purchase return" || movement.reason === "supplier return")) {
+        const product = productMap.get(movement.productId);
+        if (!product) return;
+
+        const category = product.category;
+        const costPrice = product.costPrice ? parseFloat(product.costPrice.toString()) : 0;
+        const cost = costPrice * movement.quantity;
+        
+        const current = breakdown.get(category) || { revenue: 0, cost: 0, profit: 0 };
+        breakdown.set(category, {
+          revenue: current.revenue, // Don't change revenue
+          cost: current.cost - cost, // Subtract the cost (as it's a return)
+          profit: current.profit - cost, // Subtract the cost from profit
+        });
+      }
+    });
+
     return Array.from(breakdown.entries()).map(([category, data]) => ({
       category,
       ...data,
     }));
-  }, [orders, productMap]);
+  }, [orders, movements, productMap]);
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
@@ -863,6 +943,18 @@ export default function ProfitLoss() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Purchase Returns (Cost)</span>
+                  <span className="font-semibold text-red-600">
+                    ₹{statistics.purchaseReturnCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Adjusted Purchase</span>
+                  <span className="font-semibold text-purple-600">
+                    ₹{statistics.adjustedPurchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Opening Stock</span>
                   <span className="font-semibold text-purple-600">
                     ₹{statistics.openingStock.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -893,6 +985,10 @@ export default function ProfitLoss() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Total Returns</span>
                   <span className="font-semibold">{statistics.totalReturns}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Total Purchase Returns</span>
+                  <span className="font-semibold">{statistics.totalPurchaseReturns}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Avg Order Value</span>

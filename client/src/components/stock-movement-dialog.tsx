@@ -4,7 +4,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Package, TrendingUp, TrendingDown, RefreshCw, Clock } from "lucide-react";
 import { format } from "date-fns";
-import { formatInIST } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -239,7 +238,7 @@ export function StockMovementDialog({ open, onOpenChange, product }: StockMoveme
           <div className="border-t pt-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
               <Clock className="h-4 w-4" />
-              <span>Recorded at: {formatInIST(new Date(), "MMM dd, yyyy HH:mm:ss")}</span>
+              <span>Recorded at: {format(new Date(), "MMM dd, yyyy HH:mm:ss")}</span>
             </div>
             <div className="flex justify-end gap-3">
               <Button

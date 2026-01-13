@@ -39,3 +39,29 @@ export function formatInIST(date: Date, formatString: string): string {
   
   return formatted;
 }
+
+// --- NEW: safe parse for MySQL/ISO date strings to local Date ---
+// Handles:
+// - "YYYY-MM-DD HH:mm:ss" (MySQL style) -> treated as local by replacing the space with 'T'
+// - ISO strings (with 'T' and optional 'Z') -> pass through
+export function parseOrderDate(input: string | Date | null | undefined): Date {
+  if (!input) return new Date();
+  if (input instanceof Date) return input;
+
+  const s = String(input).trim();
+  if (!s) return new Date();
+
+  // MySQL timestamp "YYYY-MM-DD HH:mm:ss"
+  if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}/.test(s)) {
+    // Replace space with 'T' so it's parsed as local time
+    return new Date(s.replace(' ', 'T'));
+  }
+
+  // ISO formats stay as-is
+  return new Date(s);
+}
+
+// --- NEW: convenience to format any input in IST ---
+export function formatISTFromInput(input: string | Date | null | undefined, pattern: string): string {
+  return formatInIST(parseOrderDate(input), pattern);
+}

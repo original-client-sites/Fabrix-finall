@@ -17,10 +17,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { CalendarIcon, Download, Filter, X, FileText, FileSpreadsheet } from "lucide-react";
-import { format } from "date-fns";
+// Removed date-fns format import as dates are now shown as raw strings
 import { Calendar } from "@/components/ui/calendar";
 import { useQuery } from "@tanstack/react-query";
-import { formatInIST } from "../lib/utils";
 import type { OrderWithItems, PaymentDetail, ReturnWithItems, DiscountCode } from "@shared/schema";
 
 // Import the date range type from react-day-picker
@@ -121,7 +120,7 @@ export default function OrderSummary() {
     
     // Date filtering
     if (dateRange?.from && dateRange?.to) {
-      const orderDate = new Date(order.createdAt!);
+      const orderDate = new Date(order.date!);
       return matchesSearch && matchesStatus && matchesPaymentMethod && 
              orderDate >= dateRange.from && orderDate <= dateRange.to;
     }
@@ -258,7 +257,8 @@ export default function OrderSummary() {
     const dailyPayments: Record<string, Record<string, number>> = {};
     
     filteredOrders.forEach(order => {
-      const date = order.createdAt ? formatInIST(new Date(order.createdAt), "yyyy-MM-dd") : 'N/A';
+      const date = order.date ? String(order.date) : 'N/A';
+
       const paymentMethod = order.paymentMethod || 'cash';
       const amount = parseFloat(order.totalAmount) || 0;
       
@@ -299,12 +299,7 @@ export default function OrderSummary() {
   // Export functions
   const formatDateForExport = (dateString: string) => {
     if (!dateString) return 'N/A';
-    // Ensure the date is formatted as dd-mm-yyyy to prevent Excel from interpreting as scientific notation
-    const date = new Date(dateString);
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `"${day}-${month}-${year}"`; // Wrap in quotes to ensure Excel treats as text
+    return dateString; // Return raw date string without formatting
   };
   
   const exportToCSV = (data: any[][], filename: string) => {
@@ -352,7 +347,14 @@ export default function OrderSummary() {
         order.orderNumber,
         order.customerName,
         order.customerPhone ? `"${order.customerPhone}"` : '',
-        order.createdAt ? formatDateForExport(order.createdAt.toString()) : '"N/A"',
+        order.date
+    ? `"${(typeof order.date === 'string'
+        ? order.date
+        : order.date.toISOString()
+      )
+        .replace('T', ' ')
+        .replace('Z', '')}"`
+    : '"N/A"',
         order.items.map(item => item.productName).join(', '),
         paymentData.cash.toFixed(2),
         paymentData.creditCard.toFixed(2),
@@ -387,7 +389,12 @@ export default function OrderSummary() {
       const total = day.cash + day.credit_card + day.debit_card + day.upi + 
                   day.bank_transfer + day.store_credit + day.mixed;
       return [
-        formatDateForExport(day.date),
+        `"${(typeof day.date === 'string'
+        ? day.date
+        : new Date(day.date).toISOString()
+      )
+        .replace('T', ' ')
+        .replace('Z', '')}"`,
         day.cash.toFixed(2),
         day.credit_card.toFixed(2),
         day.debit_card.toFixed(2),
@@ -511,11 +518,11 @@ export default function OrderSummary() {
                     {dateRange?.from ? (
                       dateRange.to ? (
                         <>
-                          {format(dateRange.from, "LLL dd, y")} -{" "}
-                          {format(dateRange.to, "LLL dd, y")}
+                          {dateRange.from.toString()} -{" "}
+                          {dateRange.to.toString()}
                         </>
                       ) : (
-                        format(dateRange.from, "LLL dd, y")
+                        dateRange.from.toString()
                       )
                     ) : (
                       <span>Pick date range</span>
@@ -584,8 +591,8 @@ export default function OrderSummary() {
                   {dateRange && dateRange.from && (
                     <Badge variant="secondary" className="flex items-center gap-1">
                       <span>
-                        Date: {dateRange && dateRange.from ? format(dateRange.from, "MMM dd, yyyy") : ''}
-                        {dateRange && dateRange.to && ` - ${format(dateRange.to, "MMM dd, yyyy")}`}
+                        Date: {dateRange && dateRange.from ? dateRange.from.toString() : ''}
+                        {dateRange && dateRange.to && ` - ${dateRange.to.toString()}`}
                       </span>
                       <Button
                         variant="ghost"
@@ -745,7 +752,14 @@ export default function OrderSummary() {
                           </td>
                           <td className="p-4 align-middle">
                             <div className="text-sm">
-                              {order.createdAt ? formatInIST(new Date(order.createdAt), "MMM dd, yyyy") : 'N/A'}
+                              {order.date
+                                ? (typeof order.date === 'string'
+                                    ? order.date
+                                    : order.date.toISOString()
+                                  )
+                                    .replace('T', ' ')
+                                    .replace('Z', '')
+                                : 'N/A'}
                             </div>
                           </td>
                           <td className="p-4 align-middle">

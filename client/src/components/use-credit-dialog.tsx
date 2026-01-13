@@ -5,7 +5,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { X, Plus, Search, Package, Clock } from "lucide-react";
 import { format } from "date-fns";
-import { formatInIST } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -93,7 +92,7 @@ export function UseCreditDialog({ open, onOpenChange, credit }: UseCreditDialogP
       
       if (previousOrders.length > 0) {
         const mostRecentOrder = previousOrders.sort(
-          (a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
+          (a, b) => new Date(b.date!).getTime() - new Date(a.date!).getTime()
         )[0];
         
         form.setValue("customerName", mostRecentOrder.customerName);
@@ -108,7 +107,8 @@ export function UseCreditDialog({ open, onOpenChange, credit }: UseCreditDialogP
   const createMutation = useMutation({
     mutationFn: async (data: InsertOrder & { items: OrderItem[]; creditCode: string; amountUsed: string }) => {
       // Create the order first
-      const order = await apiRequest("POST", "/api/orders", data) as OrderWithItems;
+      const orderResponse = await apiRequest("POST", "/api/orders", data);
+      const order = await orderResponse.json() as OrderWithItems;
       
       // Then use the store credit
       if (data.creditCode && data.amountUsed) {
@@ -602,7 +602,7 @@ export function UseCreditDialog({ open, onOpenChange, credit }: UseCreditDialogP
           <div className="border-t pt-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
               <Clock className="h-4 w-4" />
-              <span>Order Date: {formatInIST(new Date(), "MMM dd, yyyy HH:mm:ss")}</span>
+              <span>Order Date: {format(new Date(), "MMM dd, yyyy HH:mm:ss")}</span>
             </div>
             <div className="flex justify-end gap-3">
               <Button

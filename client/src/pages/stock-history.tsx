@@ -23,8 +23,7 @@ import {
 import { QRScannerDialog } from "@/components/qr-scanner-dialog";
 import { StockMovementDialog } from "@/components/stock-movement-dialog";
 import type { StockMovement, Product } from "@shared/schema";
-import { format } from "date-fns";
-import { formatInIST } from "@/lib/utils";
+// Removed date-fns format and parseISO imports as dates are now shown as raw strings
 
 type SortField = "productName" | "sku" | "category" | "available" | "sold" | "returned" | "purchaseReturn" | "purchased" | "initialStock";
 type SortOrder = "asc" | "desc";
@@ -244,7 +243,7 @@ export default function StockHistory() {
         type: 'order',
         data: order,
         returns: orderReturns,
-        date: order.createdAt,
+        date: order.date,
       });
     });
 
@@ -719,7 +718,14 @@ export default function StockHistory() {
                                 <div>
                                   <p className="text-sm text-muted-foreground">Date</p>
                                   <p className="font-semibold">
-                                    {order.createdAt && formatInIST(new Date(order.createdAt), "MMM dd, yyyy HH:mm")}
+                                    {order.date
+                                        ? (typeof order.date === 'string'
+                                            ? order.date
+                                            : order.date.toISOString()
+                                          )
+                                            .replace('T', ' ')
+                                            .replace('Z', '')
+                                        : 'N/A'}
                                   </p>
                                 </div>
                               </div>
@@ -770,7 +776,14 @@ export default function StockHistory() {
                                       <div>
                                         <p className="text-sm text-muted-foreground">Date</p>
                                         <p className="font-semibold">
-                                          {ret.createdAt && formatInIST(new Date(ret.createdAt), "MMM dd, yyyy HH:mm")}
+                                          {ret.date
+                                              ? (typeof ret.date === 'string'
+                                                  ? ret.date
+                                                  : ret.date.toISOString()
+                                                )
+                                                  .replace('T', ' ')
+                                                  .replace('Z', '')
+                                              : 'N/A'}
                                         </p>
                                       </div>
                                     </div>
@@ -821,7 +834,14 @@ export default function StockHistory() {
                               <div>
                                 <p className="text-sm text-muted-foreground">Date</p>
                                 <p className="font-semibold">
-                                  {returnData.createdAt && formatInIST(new Date(returnData.createdAt), "MMM dd, yyyy HH:mm")}
+                                  {returnData.date
+                                      ? (typeof returnData.date === 'string'
+                                          ? returnData.date
+                                          : returnData.date.toISOString()
+                                        )
+                                          .replace('T', ' ')
+                                          .replace('Z', '')
+                                      : 'N/A'}
                                 </p>
                               </div>
                             </div>

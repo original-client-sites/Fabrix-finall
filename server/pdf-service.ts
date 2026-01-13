@@ -253,13 +253,14 @@ export class PDFService {
         const detailsStartY = doc.y;
         doc.fontSize(10).font('Helvetica');
         doc.text(`Invoice No: ${order.orderNumber}`, 350, detailsStartY, { align: 'right' });
-        doc.text(`Date: ${order.createdAt ? new Date(order.createdAt).toLocaleString('en-IN', { 
-          day: '2-digit', 
-          month: 'short', 
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        }) : ''}`, 350, detailsStartY + 15, { align: 'right' });
+        doc.text(`Date: ${order.date
+    ? (typeof order.date === 'string'
+        ? order.date
+        : order.date.toISOString()
+      )
+        .replace('T', ' ')
+        .replace('Z', '')
+    : 'N/A'}`, 350, detailsStartY + 15, { align: 'right' });
         doc.text(`Payment: ${(order.paymentMethod || 'cash').replace(/_/g, ' ').toUpperCase()}`, 350, detailsStartY + 30, { align: 'right' });
         
         // Show payment breakdown if payment method is mixed

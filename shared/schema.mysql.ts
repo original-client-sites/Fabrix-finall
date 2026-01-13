@@ -74,7 +74,7 @@ export const orders = mysqlTable("orders", {
   discountPercentage: decimal("discount_percentage", { precision: 5, scale: 2 }),
   discountAmount: decimal("discount_amount", { precision: 10, scale: 2 }),
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
-  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  date: timestamp("date").default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const insertOrderSchema = createInsertSchema(orders, {
@@ -86,7 +86,7 @@ export const insertOrderSchema = createInsertSchema(orders, {
   discountPercentage: z.string().optional().transform(val => val === "" ? null : val).nullable(),
   discountAmount: z.string().optional().transform(val => val === "" ? null : val).nullable(),
   totalAmount: z.string().min(1, "Total amount is required"),
-}).omit({ id: true, createdAt: true, orderNumber: true });
+}).omit({ id: true, date: true, orderNumber: true });
 
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type Order = typeof orders.$inferSelect;
