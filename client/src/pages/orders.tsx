@@ -16,18 +16,61 @@ export default function Orders() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"latest" | "oldest" | "amount_high" | "amount_low" | "customer_name">("latest");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+  const [minAmount, setMinAmount] = useState<string>("");
+  const [maxAmount, setMaxAmount] = useState<string>("");
+  const [paymentMethod, setPaymentMethod] = useState<string>("all");
 
   const { data: orders = [], isLoading } = useQuery<OrderWithItems[]>({
     queryKey: ["/api/orders"],
   });
 
-  const filteredOrders = orders.filter((order) => {
+  // Get unique payment methods from orders
+  const paymentMethods = Array.from(new Set(orders.map(order => order.paymentMethod))).filter(Boolean).sort();
+
+  const filteredAndSortedOrders = [...orders].filter((order) => {
     const matchesSearch =
       order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.customerName.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus =
       selectedStatus === "all" || order.status === selectedStatus;
-    return matchesSearch && matchesStatus;
+    
+    // Date range filter
+    const matchesDate = (!startDate || !order.date || new Date(order.date) >= new Date(startDate)) && 
+                       (!endDate || !order.date || new Date(order.date) <= new Date(endDate));
+    
+    // Amount range filter
+    const orderAmount = parseFloat(order.totalAmount);
+    const matchesAmount = (!minAmount || orderAmount >= parseFloat(minAmount)) && 
+                        (!maxAmount || orderAmount <= parseFloat(maxAmount));
+    
+    // Payment method filter
+    const matchesPaymentMethod = paymentMethod === "all" || order.paymentMethod === paymentMethod;
+    
+    return matchesSearch && matchesStatus && matchesDate && matchesAmount && matchesPaymentMethod;
+  }).sort((a, b) => {
+    switch (sortBy) {
+      case "latest":
+        // Sort by date descending (latest first)
+        const dateA = a.date ? (a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime()) : 0;
+        const dateB = b.date ? (b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime()) : 0;
+        return dateB - dateA; // Higher timestamp first
+      case "oldest":
+        // Sort by date ascending (oldest first)
+        const dateA2 = a.date ? (a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime()) : 0;
+        const dateB2 = b.date ? (b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime()) : 0;
+        return dateA2 - dateB2; // Lower timestamp first
+      case "amount_high":
+        return parseFloat(b.totalAmount) - parseFloat(a.totalAmount);
+      case "amount_low":
+        return parseFloat(a.totalAmount) - parseFloat(b.totalAmount);
+      case "customer_name":
+        return a.customerName.localeCompare(b.customerName);
+      default:
+        return 0;
+    }
   });
 
   const statuses = [
@@ -102,6 +145,78 @@ export default function Orders() {
                 </Badge>
               ))}
             </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="text-sm font-medium text-muted-foreground mb-1 block">Start Date</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-muted-foreground mb-1 block">End Date</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-full border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-muted-foreground mb-1 block">Min Amount</label>
+                <input
+                  type="number"
+                  placeholder="Min"
+                  value={minAmount}
+                  onChange={(e) => setMinAmount(e.target.value)}
+                  className="w-full border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-muted-foreground mb-1 block">Max Amount</label>
+                <input
+                  type="number"
+                  placeholder="Max"
+                  value={maxAmount}
+                  onChange={(e) => setMaxAmount(e.target.value)}
+                  className="w-full border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-4 items-center">
+              <label className="text-sm font-medium text-muted-foreground">Sort by:</label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              >
+                <option value="latest">Latest First</option>
+                <option value="oldest">Oldest First</option>
+                <option value="amount_high">Highest Amount</option>
+                <option value="amount_low">Lowest Amount</option>
+                <option value="customer_name">Customer Name</option>
+              </select>
+            </div>
+
+            <div className="flex flex-wrap gap-4 items-center">
+              <label className="text-sm font-medium text-muted-foreground">Payment Method:</label>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                className="border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              >
+                <option value="all">All Methods</option>
+                {paymentMethods.map(method => (
+                  <option key={method} value={method}>
+                    {method?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       </div>
@@ -110,7 +225,7 @@ export default function Orders() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground" data-testid="text-order-count">
-              {filteredOrders.length} {filteredOrders.length === 1 ? "order" : "orders"}
+              {filteredAndSortedOrders.length} {filteredAndSortedOrders.length === 1 ? "order" : "orders"}
             </p>
           </div>
 
@@ -131,7 +246,7 @@ export default function Orders() {
                 </Card>
               ))}
             </div>
-          ) : filteredOrders.length === 0 ? (
+          ) : filteredAndSortedOrders.length === 0 ? (
             <Card className="border-dashed">
               <CardContent className="flex flex-col items-center justify-center py-16 text-center">
                 <div className="rounded-full bg-muted p-6 mb-4">
@@ -155,7 +270,7 @@ export default function Orders() {
             </Card>
           ) : (
             <div className="flex flex-col gap-4">
-              {filteredOrders.map((order) => (
+              {filteredAndSortedOrders.map((order) => (
                 <OrderCard key={order.id} order={order} />
               ))}
             </div>

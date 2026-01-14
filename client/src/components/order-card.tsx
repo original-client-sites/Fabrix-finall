@@ -159,7 +159,7 @@ export function OrderCard({ order }: OrderCardProps) {
             <div>
               <p className="text-sm text-muted-foreground mb-1">Items</p>
               <p className="text-lg font-semibold" data-testid={`text-items-count-${order.id}`}>
-                {order.items.length} {order.items.length === 1 ? "item" : "items"}
+                {`${order.items.reduce((total, item) => total + item.quantity, 0)} ${order.items.reduce((total, item) => total + item.quantity, 0) === 1 ? "item" : "items"}`}
               </p>
             </div>
             <div>
