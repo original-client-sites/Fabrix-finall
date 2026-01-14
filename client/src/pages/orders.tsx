@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Search, Package, QrCode } from "lucide-react";
+import { Plus, Search, Package, QrCode, CalendarIcon, Minus, DollarSign, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,6 +9,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CreateOrderDialog } from "@/components/create-order-dialog";
 import { OrderCard } from "@/components/order-card";
 import { QRScannerDialog } from "@/components/qr-scanner-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Label } from "@/components/ui/label";
+import { Calendar } from "@/components/ui/calendar";
+
 import type { OrderWithItems } from "@shared/schema";
 
 export default function Orders() {
@@ -146,76 +162,167 @@ export default function Orders() {
               ))}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <label className="text-sm font-medium text-muted-foreground mb-1 block">Start Date</label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground mb-1 block">End Date</label>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground mb-1 block">Min Amount</label>
-                <input
-                  type="number"
-                  placeholder="Min"
-                  value={minAmount}
-                  onChange={(e) => setMinAmount(e.target.value)}
-                  className="w-full border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground mb-1 block">Max Amount</label>
-                <input
-                  type="number"
-                  placeholder="Max"
-                  value={maxAmount}
-                  onChange={(e) => setMaxAmount(e.target.value)}
-                  className="w-full border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-4 items-center">
-              <label className="text-sm font-medium text-muted-foreground">Sort by:</label>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as any)}
-                className="border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              >
-                <option value="latest">Latest First</option>
-                <option value="oldest">Oldest First</option>
-                <option value="amount_high">Highest Amount</option>
-                <option value="amount_low">Lowest Amount</option>
-                <option value="customer_name">Customer Name</option>
-              </select>
-            </div>
-
-            <div className="flex flex-wrap gap-4 items-center">
-              <label className="text-sm font-medium text-muted-foreground">Payment Method:</label>
-              <select
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                className="border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              >
-                <option value="all">All Methods</option>
-                {paymentMethods.map(method => (
-                  <option key={method} value={method}>
-                    {method?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                  </option>
-                ))}
-              </select>
+            <div className="flex flex-wrap gap-2">
+              {/* Date Range Filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <CalendarIcon className="h-4 w-4" />
+                    Date Range
+                    {(startDate || endDate) && (
+                      <span className="ml-1 text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">
+                        {startDate && `From: ${new Date(startDate).toLocaleDateString()}`} 
+                        {endDate && ` To: ${new Date(endDate).toLocaleDateString()}`}
+                      </span>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-80 p-4" align="start">
+                  <DropdownMenuLabel>Date Range</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="start-date">Start Date</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            id="start-date"
+                            variant="outline"
+                            className="w-full justify-start text-left font-normal mt-1"
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {startDate ? new Date(startDate).toLocaleDateString() : "Pick a date"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={startDate ? new Date(startDate) : undefined}
+                            onSelect={(date) => setStartDate(date ? date.toISOString().split('T')[0] : "")}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div>
+                      <Label htmlFor="end-date">End Date</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            id="end-date"
+                            variant="outline"
+                            className="w-full justify-start text-left font-normal mt-1"
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {endDate ? new Date(endDate).toLocaleDateString() : "Pick a date"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={endDate ? new Date(endDate) : undefined}
+                            onSelect={(date) => setEndDate(date ? date.toISOString().split('T')[0] : "")}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* Amount Range Filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <DollarSign className="h-4 w-4" />
+                    Amount Range
+                    {(minAmount || maxAmount) && (
+                      <span className="ml-1 text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">
+                        {minAmount && `Min: ${minAmount}`} 
+                        {maxAmount && `Max: ${maxAmount}`}
+                      </span>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-64 p-4" align="start">
+                  <DropdownMenuLabel>Amount Range</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="min-amount">Minimum Amount</Label>
+                      <Input
+                        id="min-amount"
+                        type="number"
+                        placeholder="Min amount"
+                        value={minAmount}
+                        onChange={(e) => setMinAmount(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="max-amount">Maximum Amount</Label>
+                      <Input
+                        id="max-amount"
+                        type="number"
+                        placeholder="Max amount"
+                        value={maxAmount}
+                        onChange={(e) => setMaxAmount(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* Payment Method Filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <CreditCard className="h-4 w-4" />
+                    Payment Method
+                    {paymentMethod !== "all" && (
+                      <span className="ml-1 text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">
+                        {paymentMethod?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      </span>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-48" align="start">
+                  <DropdownMenuLabel>Payment Method</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setPaymentMethod("all")}>
+                    All Methods
+                  </DropdownMenuItem>
+                  {paymentMethods.map(method => (
+                    <DropdownMenuItem 
+                      key={method} 
+                      onClick={() => setPaymentMethod(method)}
+                    >
+                      {method?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* Sort By */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <Minus className="h-4 w-4 rotate-90" />
+                    Sort By
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuLabel>Sort By</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setSortBy("latest")}>Latest First</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSortBy("oldest")}>Oldest First</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSortBy("amount_high")}>Highest Amount</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSortBy("amount_low")}>Lowest Amount</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSortBy("customer_name")}>Customer Name</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
