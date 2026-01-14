@@ -289,7 +289,20 @@ export default function OrderSummary() {
       return category === categoryName;
     });
     
-    return items.map(item => `${item.quantity} ${item.productName}`).join(', ');
+    const result = items.map(item => `${item.quantity} ${item.productName}`).join(', ');
+    return result || ''; // Return empty string instead of undefined/empty
+  };
+
+  // Function to sanitize values for CSV export
+  const sanitizeForCsv = (value: string) => {
+    if (!value) return '';
+    // Escape double quotes by doubling them
+    let sanitized = value.replace(/"/g, '""');
+    // Wrap in quotes if it contains commas, quotes, or newlines
+    if (sanitized.includes(',') || sanitized.includes('"') || sanitized.includes('\n')) {
+      sanitized = `"${sanitized}"`;
+    }
+    return sanitized;
   };
 
   // Function to aggregate daily payment data
@@ -405,12 +418,12 @@ export default function OrderSummary() {
       return [
         order.orderNumber,
         order.customerName,
-        order.customerPhone ? `"${order.customerPhone}"` : '',
+        order.customerPhone ? sanitizeForCsv(order.customerPhone) : '',
         order.date
-    ? `"${new Date(order.date instanceof Date ? order.date : new Date(order.date)).toISOString().split('T')[0]}"`
-    : '"N/A"',
+    ? sanitizeForCsv(new Date(order.date instanceof Date ? order.date : new Date(order.date)).toISOString().split('T')[0])
+    : sanitizeForCsv('N/A'),
         // Add each category column
-        ...allCategories.map(category => `"${getItemsForCategory(order, category)}"`),
+        ...allCategories.map(category => sanitizeForCsv(getItemsForCategory(order, category))),
         paymentData.cash.toFixed(2),
         paymentData.creditCard.toFixed(2),
         paymentData.debitCash.toFixed(2),
@@ -418,12 +431,12 @@ export default function OrderSummary() {
         parseFloat(order.discountAmount || '0').toFixed(2),
         remainingStoreCredit.toFixed(2),
         usedStoreCredit.totalUsed.toFixed(2),
-        returnedItems.length > 0 
+        sanitizeForCsv(returnedItems.length > 0 
           ? returnedItems.map(item => `${item.quantity}x ${item.productName}`).join(', ')
-          : 'None',
-        exchangedItems.length > 0
+          : 'None'),
+        sanitizeForCsv(exchangedItems.length > 0
           ? exchangedItems.map(item => `${item.quantity}x ${item.exchangeProductName || item.exchangeProductId}`).join(', ')
-          : 'None',
+          : 'None'),
         parseFloat(order.totalAmount).toFixed(2)
       ];
     });
