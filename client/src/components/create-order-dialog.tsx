@@ -464,12 +464,17 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                       <Input
                         id="discountPercentage"
                         type="number"
-                        step="0.01"
+                        step="1"
                         min="0"
                         max="100"
                         {...form.register("discountPercentage", {
                           onChange: (e) => {
-                            const value = e.target.value;
+                            let value = e.target.value;
+                            // Ensure the value is an integer
+                            if (value && !Number.isInteger(parseFloat(value))) {
+                              value = Math.round(parseFloat(value)).toString();
+                              e.target.value = value;
+                            }
                             form.setValue('discountPercentage', value);
                             if (value) {
                               const subTotal = parseFloat(calculateSubTotal());
@@ -479,7 +484,7 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                             }
                           }
                         })}
-                        placeholder="0.00"
+                        placeholder="0"
                       />
                     </div>
                   )}
@@ -490,12 +495,17 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                       <Input
                         id="discountAmount"
                         type="number"
-                        step="0.01"
+                        step="1"
                         min="0"
                         max={parseFloat(calculateSubTotal())}
                         {...form.register("discountAmount", {
                           onChange: (e) => {
-                            const value = e.target.value;
+                            let value = e.target.value;
+                            // Ensure the value is an integer
+                            if (value && !Number.isInteger(parseFloat(value))) {
+                              value = Math.round(parseFloat(value)).toString();
+                              e.target.value = value;
+                            }
                             form.setValue('discountAmount', value);
                             if (value) {
                               const subTotal = parseFloat(calculateSubTotal());
@@ -505,7 +515,7 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                             }
                           }
                         })}
-                        placeholder="0.00"
+                        placeholder="0"
                       />
                     </div>
                   )}

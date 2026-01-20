@@ -83,8 +83,28 @@ export const insertOrderSchema = createInsertSchema(orders, {
   status: z.enum(["pending", "processing", "shipped", "delivered", "cancelled"]),
   paymentMethod: z.enum(["cash", "credit_card", "debit_card", "upi", "bank_transfer", "store_credit", "mixed"]),
   subTotal: z.string().optional().transform(val => val === "" ? null : val).nullable(),
-  discountPercentage: z.string().optional().transform(val => val === "" ? null : val).nullable(),
-  discountAmount: z.string().optional().transform(val => val === "" ? null : val).nullable(),
+  discountPercentage: z.string().optional().transform(val => {
+    if (val === "" || val === null || val === undefined) return null;
+    const num = parseFloat(val);
+    if (isNaN(num) || num < 0 || num > 100) {
+      throw new Error("Discount percentage must be a number between 0 and 100");
+    }
+    if (!Number.isInteger(num)) {
+      throw new Error("Discount percentage must be an integer");
+    }
+    return val;
+  }).nullable(),
+  discountAmount: z.string().optional().transform(val => {
+    if (val === "" || val === null || val === undefined) return null;
+    const num = parseFloat(val);
+    if (isNaN(num) || num < 0) {
+      throw new Error("Discount amount must be a positive number");
+    }
+    if (!Number.isInteger(num)) {
+      throw new Error("Discount amount must be an integer");
+    }
+    return val;
+  }).nullable(),
   totalAmount: z.string().min(1, "Total amount is required"),
 }).omit({ id: true, date: true, orderNumber: true });
 
@@ -284,7 +304,16 @@ export const discountCodes = mysqlTable("discount_codes", {
 export const insertDiscountCodeSchema = createInsertSchema(discountCodes, {
   code: z.string().min(1, "Code is required"),
   customerEmail: z.string().email("Valid email is required"),
-  amount: z.string().min(1, "Amount is required"),
+  amount: z.string().min(1, "Amount is required").transform(val => {
+    const num = parseFloat(val);
+    if (isNaN(num) || num < 0) {
+      throw new Error("Discount amount must be a positive number");
+    }
+    if (!Number.isInteger(num)) {
+      throw new Error("Discount amount must be an integer");
+    }
+    return val;
+  }),
   expiresAt: z.date().optional(),
 }).omit({ id: true, createdAt: true, isUsed: true, usedAt: true });
 
