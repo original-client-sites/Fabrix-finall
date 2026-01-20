@@ -482,7 +482,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         shouldCreate: creditAmount > 0 && returnData.customerEmail
       });
 
-      if (creditAmount > 0 && returnData.customerEmail) {
+      if (creditAmount > 0) {
         const code = `CREDIT-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
         const expiresAt = new Date();
         expiresAt.setFullYear(expiresAt.getFullYear() + 1); // 1 year expiry
@@ -490,7 +490,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('Creating discount code for store credit:', {
           code,
           amount: creditAmount.toFixed(2),
-          email: returnData.customerEmail
+          email: returnData.customerEmail,
+          creditAmountType: typeof creditAmount,
+          creditAmountValue: creditAmount
         });
 
         try {
@@ -519,9 +521,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } catch (emailError) {
             console.error('Failed to send discount code email:', emailError);
           }
-        } catch (discountError) {
+        } catch (discountError: any) {
           console.error('Failed to create discount code:', discountError);
-          console.error('Discount code error details:', discountError);
+          console.error('Discount code error details:', {
+            message: discountError.message,
+            stack: discountError.stack,
+            code: discountError.code,
+            name: discountError.name
+          });
+          // Send error response to frontend
+          return res.status(500).json({ 
+            message: 'Return created successfully, but failed to create store credit', 
+            error: discountError.message,
+            returnId: newReturn.id
+          });
         }
       } else {
         console.log('Skipping discount code creation:', {

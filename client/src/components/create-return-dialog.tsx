@@ -94,19 +94,32 @@ export function CreateReturnDialog({ open, onOpenChange, order }: CreateReturnDi
 
   const createReturnMutation = useMutation({
     mutationFn: async (data: InsertReturn) => {
-      return await apiRequest("POST", "/api/returns", data);
+      const response = await apiRequest("POST", "/api/returns", data);
+      return await response.json();
     },
-    onSuccess: () => {
+    onSuccess: (responseData) => {
       queryClient.invalidateQueries({ queryKey: ["/api/returns"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/discount-codes"] });
+      
       const { credit } = calculateTotals();
-      toast({
-        title: "Return Created",
-        description: credit > 0
-          ? `Return has been created successfully. A store credit discount code for ₹{credit.toFixed(2)} has been sent to the customer's email.`
-          : "Return has been created successfully.",
-      });
+      
+      // Check if there was a partial success (return created but discount code failed)
+      if (responseData?.message?.includes('Return created successfully, but failed to create store credit')) {
+        toast({
+          title: "Return Created with Warning",
+          description: `Return was created successfully, but store credit creation failed: ${responseData.error}. The return ID is ${responseData.returnId}.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Return Created",
+          description: credit > 0
+            ? `Return has been created successfully. A store credit discount code for ₹{credit.toFixed(2)} has been sent to the customer's email.`
+            : "Return has been created successfully.",
+        });
+      }
+      
       onOpenChange(false);
       form.reset();
     },

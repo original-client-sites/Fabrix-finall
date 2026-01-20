@@ -306,14 +306,11 @@ export const discountCodes = pgTable("discount_codes", {
 
 export const insertDiscountCodeSchema = createInsertSchema(discountCodes, {
   code: z.string().min(1, "Code is required"),
-  customerEmail: z.string().email("Valid email is required"),
+  customerEmail: z.string().email("Valid email is required").optional().or(z.literal("")),
   amount: z.string().min(1, "Amount is required").transform(val => {
     const num = parseFloat(val);
     if (isNaN(num) || num < 0) {
       throw new Error("Discount amount must be a positive number");
-    }
-    if (!Number.isInteger(num)) {
-      throw new Error("Discount amount must be an integer");
     }
     return val;
   }),

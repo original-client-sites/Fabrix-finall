@@ -309,9 +309,6 @@ export const insertDiscountCodeSchema = createInsertSchema(discountCodes, {
     if (isNaN(num) || num < 0) {
       throw new Error("Discount amount must be a positive number");
     }
-    if (!Number.isInteger(num)) {
-      throw new Error("Discount amount must be an integer");
-    }
     return val;
   }),
   expiresAt: z.date().optional(),

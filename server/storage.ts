@@ -563,6 +563,7 @@ export class DatabaseStorage implements IStorage {
       code: data.code,
       customerEmail: data.customerEmail,
       amount,
+      amountType: typeof amount,
       expiresAt: data.expiresAt
     });
 
