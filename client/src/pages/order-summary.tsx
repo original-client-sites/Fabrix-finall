@@ -388,14 +388,17 @@ export default function OrderSummary() {
   };
   
   const exportOrderSummary = (format: 'csv' | 'excel') => {
-    // Get all categories from ALL orders to ensure all possible category columns exist
-    const allCategories = getAllCategories();
+    // Transform orders into item-based rows
+    const transformedRows: any[][] = [];
+    
+    // Headers for the new format
     const headers = [
       'Order #', 
       'Customer Name', 
       'Phone Number', 
       'Date', 
-      ...allCategories, // Dynamic category columns
+      'Item Type', 
+      'Quantity',
       'Cash', 
       'Credit Card', 
       'Debit Cash', 
@@ -407,41 +410,46 @@ export default function OrderSummary() {
       'Items Taken in Exchange', 
       'Total'
     ];
-    const rows = filteredOrders.map(order => {
+    
+    filteredOrders.forEach(order => {
       const paymentData = processPaymentMethods(order);
       const remainingStoreCredit = getRemainingStoreCredit(order.customerEmail || '');
       const usedStoreCredit = getUsedStoreCreditForOrder(order);
       const returnedItems = getReturnedItemsForOrder(order.id);
       const exchangedItems = getExchangedItemsForOrder(order.id);
       
-      // Use the same allCategories as defined at the function level
-      return [
-        order.orderNumber,
-        order.customerName,
-        order.customerPhone ? sanitizeForCsv(order.customerPhone) : '',
-        order.date
-    ? sanitizeForCsv(new Date(order.date instanceof Date ? order.date : new Date(order.date)).toISOString().split('T')[0])
-    : sanitizeForCsv('N/A'),
-        // Add each category column
-        ...allCategories.map(category => sanitizeForCsv(getItemsForCategory(order, category))),
-        paymentData.cash.toFixed(2),
-        paymentData.creditCard.toFixed(2),
-        paymentData.debitCash.toFixed(2),
-        paymentData.upi.toFixed(2),
-        parseFloat(order.discountAmount || '0').toFixed(2),
-        remainingStoreCredit.toFixed(2),
-        usedStoreCredit.totalUsed.toFixed(2),
-        sanitizeForCsv(returnedItems.length > 0 
-          ? returnedItems.map(item => `${item.quantity}x ${item.productName}`).join(', ')
-          : 'None'),
-        sanitizeForCsv(exchangedItems.length > 0
-          ? exchangedItems.map(item => `${item.quantity}x ${item.exchangeProductName || item.exchangeProductId}`).join(', ')
-          : 'None'),
-        parseFloat(order.totalAmount).toFixed(2)
-      ];
+      // Create a row for each item in the order
+      order.items.forEach(item => {
+        const itemCategory = getProductCategoryByName(item.productName);
+        const row = [
+          order.orderNumber,
+          order.customerName,
+          order.customerPhone ? sanitizeForCsv(order.customerPhone) : '',
+          order.date
+      ? sanitizeForCsv(new Date(order.date instanceof Date ? order.date : new Date(order.date)).toISOString().split('T')[0])
+      : sanitizeForCsv('N/A'),
+          sanitizeForCsv(itemCategory), // Item Type (using category)
+          item.quantity, // Quantity
+          paymentData.cash.toFixed(2),
+          paymentData.creditCard.toFixed(2),
+          paymentData.debitCash.toFixed(2),
+          paymentData.upi.toFixed(2),
+          parseFloat(order.discountAmount || '0').toFixed(2),
+          remainingStoreCredit.toFixed(2),
+          usedStoreCredit.totalUsed.toFixed(2),
+          sanitizeForCsv(returnedItems.length > 0 
+            ? returnedItems.map(item => `${item.quantity}x ${item.productName}`).join(', ')
+            : 'None'),
+          sanitizeForCsv(exchangedItems.length > 0
+            ? exchangedItems.map(item => `${item.quantity}x ${item.exchangeProductName || item.exchangeProductId}`).join(', ')
+            : 'None'),
+          parseFloat(order.totalAmount).toFixed(2)
+        ];
+        transformedRows.push(row);
+      });
     });
     
-    const data = [headers, ...rows];
+    const data = [headers, ...transformedRows];
     const filename = `order-summary-${new Date().toISOString().split('T')[0]}.${format === 'csv' ? 'csv' : 'xlsx'}`;
     
     if (format === 'csv') {
