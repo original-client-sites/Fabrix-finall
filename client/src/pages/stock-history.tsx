@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { TrendingUp, TrendingDown, RefreshCw, Package, QrCode, ShoppingCart, Truck, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { TrendingUp, TrendingDown, RefreshCw, Package, QrCode, ShoppingCart, Truck, ArrowUpDown, ArrowUp, ArrowDown, FileText, FileSpreadsheet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -384,6 +384,95 @@ export default function StockHistory() {
     setIsScannerOpen(false);
   };
 
+  // Function to sanitize values for CSV export
+  const sanitizeForCsv = (value: string | number) => {
+    if (value === undefined || value === null) return '';
+    const strValue = String(value);
+    // Escape double quotes by doubling them
+    let sanitized = strValue.replace(/"/g, '""');
+    // Wrap in quotes if it contains commas, quotes, or newlines
+    if (sanitized.includes(',') || sanitized.includes('"') || sanitized.includes('\n')) {
+      sanitized = `"${sanitized}"`;
+    }
+    return sanitized;
+  };
+
+  // Export functions
+  const exportToCSV = (data: any[][], filename: string) => {
+    const csvContent = data.map(row => row.map(field => `${field}`.replace(/\"/g, '"').replace(/\,/g, ',')).join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
+  const exportToExcel = (data: any[][], filename: string) => {
+    // For simplicity, we'll use the same approach as CSV but with .xlsx extension
+    // In a real application, you'd use a library like xlsx to create proper Excel files
+    const csvContent = data.map(row => row.map(field => `${field}`.replace(/\"/g, '"').replace(/\,/g, ',')).join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
+  const exportStockHistory = (format: 'csv' | 'excel') => {
+    // Headers for the stock history export
+    const headers = [
+      'Category',
+      'Product Name',
+      'MRP',
+      'Barcode',
+      'SKU',
+      'Good Inventory',
+      'Block Inventory',
+      'Total Inventory',
+      'Total Price',
+      'Created At',
+      'Updated At'
+    ];
+    
+    // Create rows from the actual products data (not the calculated stock stats)
+    const rows = products.map(product => {
+      return [
+        sanitizeForCsv(product.category),
+        sanitizeForCsv(product.productName),
+        sanitizeForCsv(product.price),
+        sanitizeForCsv(product.productImage || ''), // Using productImage as a substitute for barcode
+        sanitizeForCsv(product.sku),
+        sanitizeForCsv(product.stockQuantity), // Good inventory = stock quantity
+        sanitizeForCsv(0), // Block inventory - not available in schema, using 0
+        sanitizeForCsv(product.stockQuantity), // Total inventory = good inventory + block inventory
+        sanitizeForCsv(parseFloat(product.price || '0') * product.stockQuantity), // Total price = MRP * Total inventory
+        sanitizeForCsv(product.createdAt ? new Date(product.createdAt).toISOString().replace('T', ' ').replace('Z', '') : 'N/A'),
+        sanitizeForCsv(product.createdAt ? new Date(product.createdAt).toISOString().replace('T', ' ').replace('Z', '') : 'N/A') // Using createdAt as updatedAt since updatedAt doesn't exist in schema
+      ];
+    });
+    
+    const data = [headers, ...rows];
+    const filename = `stock-history-${new Date().toISOString().split('T')[0]}.${format === 'csv' ? 'csv' : 'xlsx'}`;
+    
+    if (format === 'csv') {
+      exportToCSV(data, filename);
+    } else {
+      exportToExcel(data, filename);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="border-b bg-background">
@@ -397,13 +486,31 @@ export default function StockHistory() {
                 Track all inventory movements and changes
               </p>
             </div>
-            <Button
-              onClick={() => setIsScannerOpen(true)}
-              data-testid="button-scan-for-stock"
-            >
-              <QrCode className="h-4 w-4 mr-2" />
-              Scan to Update Stock
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => exportStockHistory('csv')}
+                className="flex items-center gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                Export (CSV)
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => exportStockHistory('excel')}
+                className="flex items-center gap-2"
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+                Export (Excel)
+              </Button>
+              <Button
+                onClick={() => setIsScannerOpen(true)}
+                data-testid="button-scan-for-stock"
+              >
+                <QrCode className="h-4 w-4 mr-2" />
+                Scan to Update Stock
+              </Button>
+            </div>
           </div>
         </div>
       </div>
