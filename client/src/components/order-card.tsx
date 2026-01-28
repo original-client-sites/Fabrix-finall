@@ -308,10 +308,68 @@ export function OrderCard({ order }: OrderCardProps) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
-              const phoneNumber = order.customerPhone!.replace(/[^0-9]/g, '');
-              const whatsappUrl = `https://wa.me/${phoneNumber}`;
-              window.open(whatsappUrl, '_blank');
+            onClick={async () => {
+              try {
+                // Prepare WhatsApp message
+                const message = `Hello ${order.customerName},
+
+Please find the invoice for your order #${order.orderNumber}.
+
+Total Amount: ₹${order.totalAmount}
+
+Thank you for your purchase!`;
+                
+                const formData = new FormData();
+                formData.append('phoneNumber', order.customerPhone!.replace(/[^0-9]/g, ''));
+                formData.append('message', message);
+                formData.append('orderId', order.id);
+                
+                // Call WhatsApp File API endpoint
+                const response = await fetch('/api/whatsapp/send-file', {
+                  method: 'POST',
+                  body: formData
+                });
+                
+                if (!response.ok) {
+                  throw new Error('Failed to prepare WhatsApp file');
+                }
+                
+                const result = await response.json();
+                
+                // Trigger file download for WhatsApp Desktop to detect
+                // Create a temporary download link
+                const downloadLink = document.createElement('a');
+                downloadLink.href = result.downloadUrl;
+                downloadLink.download = result.fileName;
+                downloadLink.style.display = 'none';
+                document.body.appendChild(downloadLink);
+                
+                // Trigger download
+                downloadLink.click();
+                
+                // Remove the temporary link
+                setTimeout(() => {
+                  document.body.removeChild(downloadLink);
+                }, 1000);
+                
+                // Wait a moment for the file to be downloaded, then open WhatsApp
+                setTimeout(() => {
+                  // Open WhatsApp Desktop with pre-filled message
+                  window.open(result.whatsappUrl, '_blank');
+                  
+                  toast({
+                    title: "Success",
+                    description: "Invoice downloaded and WhatsApp opened. The file should be automatically available for attachment.",
+                  });
+                }, 1500);
+                
+              } catch (error) {
+                toast({
+                  title: "Error",
+                  description: "Failed to send WhatsApp file",
+                  variant: "destructive",
+                });
+              }
             }}
             className="flex-1"
           >

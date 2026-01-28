@@ -31,6 +31,11 @@ import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { emailService } from "./email-service";
 
+// Extend global namespace for temporary file storage
+declare global {
+  var tempFiles: Record<string, { buffer: Buffer; fileName: string; mimeType: string }> | undefined;
+}
+
 // Configure multer for file uploads (in-memory storage)
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -763,6 +768,139 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Return invoice generation error:', error);
       res.status(500).json({ error: "Failed to generate return invoice" });
+    }
+  });
+
+  // WhatsApp file send endpoint - generates downloadable invoice for WhatsApp Desktop
+  app.post("/api/whatsapp/send-file", upload.single("file"), async (req, res) => {
+    try {
+      const { phoneNumber, message, orderId } = req.body;
+      
+      if (!phoneNumber) {
+        return res.status(400).json({ error: "Phone number is required" });
+      }
+      
+      if (!message) {
+        return res.status(400).json({ error: "Message is required" });
+      }
+      
+      if (!orderId) {
+        return res.status(400).json({ error: "Order ID is required" });
+      }
+      
+      // Generate the invoice
+      const order = await storage.getOrder(orderId);
+      if (!order) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+      
+      const {pdfService } = await import('./pdf-service');
+      const pdfBuffer = await pdfService.generateInvoice(order);
+      const fileName = `invoice-${order.orderNumber}.pdf`;
+      
+      // Create a permanent download URL for the invoice
+      // WhatsApp Desktop will be able to automatically detect this file
+      const downloadUrl = `${req.protocol}://${req.get('host')}/api/whatsapp/download/${orderId}`;
+      
+      // Store the file in global temp storage for direct access
+      const fileUrl = `/api/whatsapp/download/${orderId}`;
+      global.tempFiles = global.tempFiles || {};
+      global.tempFiles[fileUrl] = {
+        buffer: pdfBuffer,
+        fileName: fileName,
+        mimeType: 'application/pdf'
+      };
+      
+      // Prepare WhatsApp message with download link
+      const phoneNumberClean = phoneNumber.replace(/[^0-9]/g, '');
+      const whatsappMessage = `${message}
+
+📎 Please find your invoice attached to this chat.
+📁 Invoice will be automatically available for download.`;
+      const encodedMessage = encodeURIComponent(whatsappMessage);
+      
+      // Use WhatsApp Web URL scheme with file attachment parameter
+      const whatsappUrl = `https://wa.me/${phoneNumberClean}?text=${encodedMessage}&file=${encodeURIComponent(downloadUrl)}`;
+      
+      res.json({
+        success: true,
+        whatsappUrl: whatsappUrl,
+        downloadUrl: downloadUrl,
+        fileName: fileName,
+        orderNumber: order.orderNumber
+      });
+    } catch (error) {
+      console.error('WhatsApp file send error:', error);
+      res.status(500).json({ error: "Failed to send WhatsApp file" });
+    }
+  });
+
+  // WhatsApp invoice download endpoint
+  app.get("/api/whatsapp/download/:orderId", async (req, res) => {
+    try {
+      const fileUrl = `/api/whatsapp/download/${req.params.orderId}`;
+      
+      if (!global.tempFiles || !global.tempFiles[fileUrl]) {
+        // Generate the invoice on-the-fly if not in cache
+        const order = await storage.getOrder(req.params.orderId);
+        if (!order) {
+          return res.status(404).json({ error: "Order not found" });
+        }
+        
+        const {pdfService } = await import('./pdf-service');
+        const pdfBuffer = await pdfService.generateInvoice(order);
+        const fileName = `invoice-${order.orderNumber}.pdf`;
+        
+        global.tempFiles = global.tempFiles || {};
+        global.tempFiles[fileUrl] = {
+          buffer: pdfBuffer,
+          fileName: fileName,
+          mimeType: 'application/pdf'
+        };
+      }
+      
+      const fileData = global.tempFiles[fileUrl];
+      
+      // Set proper headers for file download
+      res.setHeader('Content-Type', fileData.mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${fileData.fileName}"`);
+      res.setHeader('Content-Length', fileData.buffer.length);
+      
+      res.send(fileData.buffer);
+      
+      // Optional: Clean up the temporary file after 5 minutes
+      setTimeout(() => {
+        if (global.tempFiles && global.tempFiles[fileUrl]) {
+          delete global.tempFiles[fileUrl];
+        }
+      }, 5 * 60 * 1000); // 5 minutes
+      
+    } catch (error) {
+      console.error('WhatsApp invoice download error:', error);
+      res.status(500).json({ error: "Failed to download invoice" });
+    }
+  });
+
+  // Temporary file download endpoint
+  app.get("/api/temp-file/:fileName", async (req, res) => {
+    try {
+      const tempUrl = `/api/temp-file/${req.params.fileName}`;
+      
+      if (!global.tempFiles || !global.tempFiles[tempUrl]) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      
+      const fileData = global.tempFiles[tempUrl];
+      
+      res.setHeader('Content-Type', fileData.mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${fileData.fileName}"`);
+      res.send(fileData.buffer);
+      
+      // Clean up the temporary file after sending
+      delete global.tempFiles[tempUrl];
+    } catch (error) {
+      console.error('Temporary file download error:', error);
+      res.status(500).json({ error: "Failed to download temporary file" });
     }
   });
 
