@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format, parseISO } from 'date-fns';
-import { Calendar, Package, User, Mail, Phone, Download, RotateCcw, FileText } from "lucide-react";
+import { Calendar, Package, User, Mail, Phone, Download, RotateCcw, FileText, MessageCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -304,6 +304,21 @@ export function OrderCard({ order }: OrderCardProps) {
           <Download className="h-4 w-4 mr-2" />
           Download Invoice
         </Button>
+        {order.customerPhone && order.customerPhone.trim() !== "" && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const phoneNumber = order.customerPhone!.replace(/[^0-9]/g, '');
+              const whatsappUrl = `https://wa.me/${phoneNumber}`;
+              window.open(whatsappUrl, '_blank');
+            }}
+            className="flex-1"
+          >
+            <MessageCircle className="h-4 w-4 mr-2" />
+            WhatsApp
+          </Button>
+        )}
         <Button
           variant="outline"
           size="sm"
