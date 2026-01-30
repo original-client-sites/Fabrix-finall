@@ -377,14 +377,42 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createStockMovement(insertMovement: InsertStockMovement): Promise<StockMovement> {
-    const id = randomUUID();
-    await db.insert(stockMovements).values({
-      ...insertMovement,
-      id,
-    });
-
-    const movementResult = await db.select().from(stockMovements).where(eq(stockMovements.id, id));
-    const movement = movementResult[0];
+    // Check if there's already a stock movement record for this product
+    const existingMovements = await db.select().from(stockMovements)
+      .where(eq(stockMovements.productId, insertMovement.productId));
+    
+    let movement: StockMovement;
+    
+    if (existingMovements.length > 0) {
+      // Update existing record by adding the new quantity
+      const existingMovement = existingMovements[0];
+      const newQuantity = existingMovement.quantity + insertMovement.quantity;
+      
+      await db.update(stockMovements)
+        .set({
+          quantity: newQuantity,
+          type: insertMovement.type,
+          reason: insertMovement.reason,
+          notes: insertMovement.notes ? `${existingMovement.notes || ''} ${insertMovement.notes}`.trim() : existingMovement.notes,
+          createdAt: new Date(), // Update timestamp
+        })
+        .where(eq(stockMovements.id, existingMovement.id));
+      
+      // Get updated movement
+      const updatedMovementResult = await db.select().from(stockMovements)
+        .where(eq(stockMovements.id, existingMovement.id));
+      movement = updatedMovementResult[0];
+    } else {
+      // Create new record
+      const id = randomUUID();
+      await db.insert(stockMovements).values({
+        ...insertMovement,
+        id,
+      });
+      
+      const movementResult = await db.select().from(stockMovements).where(eq(stockMovements.id, id));
+      movement = movementResult[0];
+    }
 
     // Use atomic update to avoid race conditions
     if (insertMovement.type === "in") {

@@ -464,30 +464,13 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                       <Input
                         id="discountPercentage"
                         type="number"
-                        step="1"
+                        step="0.1"
                         min="0"
                         max="100"
                         {...form.register("discountPercentage", {
                           onChange: (e) => {
                             let value = e.target.value;
-                            // Truncate decimal portion (convert paise to rupees) and show user the truncated value
-                            if (value) {
-                              const numValue = parseFloat(value);
-                              if (!isNaN(numValue)) {
-                                const truncatedValue = Math.floor(numValue).toString();
-                                if (truncatedValue !== value) {
-                                  e.target.value = truncatedValue;
-                                  value = truncatedValue;
-                                  // Show toast to inform user of auto-truncation
-                                  if (numValue !== Math.floor(numValue)) {
-                                    toast({
-                                      title: "Decimal Truncated",
-                                      description: `Discount percentage ${numValue} truncated to ${truncatedValue} (paise removed)`
-                                    });
-                                  }
-                                }
-                              }
-                            }
+                            // Allow decimal percentages (no auto-modification)
                             form.setValue('discountPercentage', value);
                             if (value) {
                               const subTotal = parseFloat(calculateSubTotal());

@@ -89,8 +89,8 @@ export const insertOrderSchema = createInsertSchema(orders, {
     if (isNaN(num) || num < 0 || num > 100) {
       throw new Error("Discount percentage must be a number between 0 and 100");
     }
-    // Truncate decimal portion (convert paise to rupees)
-    return Math.floor(num).toString();
+    // Allow decimal percentages (no rounding/truncation)
+    return num.toString();
   }).nullable(),
   discountAmount: z.string().optional().transform(val => {
     if (val === "" || val === null || val === undefined) return null;
