@@ -470,10 +470,23 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                         {...form.register("discountPercentage", {
                           onChange: (e) => {
                             let value = e.target.value;
-                            // Ensure the value is an integer
-                            if (value && !Number.isInteger(parseFloat(value))) {
-                              value = Math.round(parseFloat(value)).toString();
-                              e.target.value = value;
+                            // Round to nearest integer and show user the rounded value
+                            if (value) {
+                              const numValue = parseFloat(value);
+                              if (!isNaN(numValue)) {
+                                const roundedValue = Math.round(numValue).toString();
+                                if (roundedValue !== value) {
+                                  e.target.value = roundedValue;
+                                  value = roundedValue;
+                                  // Show toast to inform user of auto-rounding
+                                  if (numValue !== Math.round(numValue)) {
+                                    toast({
+                                      title: "Auto-Rounded",
+                                      description: `Discount percentage rounded from ${numValue} to ${roundedValue}`,
+                                    });
+                                  }
+                                }
+                              }
                             }
                             form.setValue('discountPercentage', value);
                             if (value) {
@@ -501,10 +514,23 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                         {...form.register("discountAmount", {
                           onChange: (e) => {
                             let value = e.target.value;
-                            // Ensure the value is an integer
-                            if (value && !Number.isInteger(parseFloat(value))) {
-                              value = Math.round(parseFloat(value)).toString();
-                              e.target.value = value;
+                            // Round to nearest integer and show user the rounded value
+                            if (value) {
+                              const numValue = parseFloat(value);
+                              if (!isNaN(numValue)) {
+                                const roundedValue = Math.round(numValue).toString();
+                                if (roundedValue !== value) {
+                                  e.target.value = roundedValue;
+                                  value = roundedValue;
+                                  // Show toast to inform user of auto-rounding
+                                  if (numValue !== Math.round(numValue)) {
+                                    toast({
+                                      title: "Auto-Rounded",
+                                      description: `Discount amount rounded from ₹${numValue.toFixed(2)} to ₹${roundedValue}`,
+                                    });
+                                  }
+                                }
+                              }
                             }
                             form.setValue('discountAmount', value);
                             if (value) {
