@@ -1,2 +1,0 @@
-ALTER TABLE `orders` ADD `payment_method` varchar(50) DEFAULT 'cash' NOT NULL;--> statement-breakpoint
-ALTER TABLE `returns` ADD `payment_method` varchar(50) DEFAULT 'cash' NOT NULL;

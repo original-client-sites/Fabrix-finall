@@ -55,11 +55,26 @@ CREATE TABLE `orders` (
 	`customer_email` varchar(150),
 	`customer_phone` varchar(20),
 	`status` varchar(50) NOT NULL DEFAULT 'pending',
-	`payment_method` varchar(50) NOT NULL DEFAULT 'cash',
+	`payment_method` varchar(50) NOT NULL,
 	`notes` text,
+	`sub_total` decimal(10,2),
+	`discount_percentage` decimal(5,2),
+	`discount_amount` decimal(10,2),
 	`total_amount` decimal(10,2) NOT NULL,
-	`created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+	`date` timestamp DEFAULT CURRENT_TIMESTAMP,
 	CONSTRAINT `orders_id` PRIMARY KEY(`id`)
+);
+--> statement-breakpoint
+CREATE TABLE `payment_details` (
+	`id` varchar(36) NOT NULL,
+	`order_id` varchar(36) NOT NULL,
+	`payment_method` varchar(50) NOT NULL,
+	`amount` decimal(10,2) NOT NULL,
+	`payment_date` timestamp DEFAULT CURRENT_TIMESTAMP,
+	`transaction_id` varchar(255),
+	`status` varchar(50) NOT NULL DEFAULT 'completed',
+	`notes` text,
+	CONSTRAINT `payment_details_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
 CREATE TABLE `products` (
@@ -67,13 +82,13 @@ CREATE TABLE `products` (
 	`product_name` varchar(255) NOT NULL,
 	`sku` varchar(100) NOT NULL,
 	`category` varchar(100) NOT NULL,
-	`brand` varchar(100) NOT NULL,
+	`brand` varchar(100),
 	`description` text,
-	`color` varchar(50) NOT NULL,
+	`color` varchar(50),
 	`size` varchar(50) NOT NULL,
 	`fabric` varchar(100),
 	`pattern` varchar(100),
-	`gender` varchar(20) NOT NULL,
+	`gender` varchar(20),
 	`price` decimal(10,2) NOT NULL,
 	`cost_price` decimal(10,2),
 	`stock_quantity` int NOT NULL DEFAULT 0,
@@ -110,8 +125,8 @@ CREATE TABLE `returns` (
 	`customer_name` varchar(100) NOT NULL,
 	`customer_email` varchar(150),
 	`status` varchar(50) NOT NULL DEFAULT 'pending',
-	`reason` varchar(255) NOT NULL,
 	`payment_method` varchar(50) NOT NULL DEFAULT 'cash',
+	`reason` varchar(255) NOT NULL,
 	`notes` text,
 	`refund_amount` decimal(10,2),
 	`credit_amount` decimal(10,2),

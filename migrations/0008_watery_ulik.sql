@@ -1,1 +1,0 @@
-ALTER TABLE `orders` MODIFY COLUMN `payment_method` varchar(50) NOT NULL;

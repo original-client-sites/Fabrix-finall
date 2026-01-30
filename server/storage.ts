@@ -34,7 +34,7 @@ import type {
 } from "@shared/schema.mysql";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and } from "drizzle-orm";
 import { db } from "./db";
 
 
@@ -147,18 +147,7 @@ export class DatabaseStorage implements IStorage {
 
     await this.initializeStockStats(product);
 
-    if (product.stockQuantity > 0) {
-      await db.insert(stockMovements).values({
-        id: randomUUID(),
-        productId: product.id,
-        productName: product.productName,
-        sku: product.sku,
-        type: "in",
-        quantity: product.stockQuantity,
-        reason: "Initial Stock",
-        notes: "Initial stock added during product creation",
-      });
-    }
+    // Don't create stock movement here; it's handled in routes.ts to avoid duplication
 
     return {
       ...product,
@@ -377,33 +366,48 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createStockMovement(insertMovement: InsertStockMovement): Promise<StockMovement> {
-    // Check if there's already a stock movement record for this product
-    const existingMovements = await db.select().from(stockMovements)
-      .where(eq(stockMovements.productId, insertMovement.productId));
-    
+    // Only consolidate movements for 'adjustment' reason, not for 'Initial Stock'
+    // This prevents double counting during product creation while allowing consolidation for manual adjustments
     let movement: StockMovement;
     
-    if (existingMovements.length > 0) {
-      // Update existing record by adding the new quantity
-      const existingMovement = existingMovements[0];
-      const newQuantity = existingMovement.quantity + insertMovement.quantity;
+    if (insertMovement.reason === 'adjustment') {
+      // Check if there's already an adjustment movement record for this product
+      const existingAdjustment = await db.select().from(stockMovements)
+        .where(and(
+          eq(stockMovements.productId, insertMovement.productId),
+          eq(stockMovements.reason, 'adjustment')
+        ));
       
-      await db.update(stockMovements)
-        .set({
-          quantity: newQuantity,
-          type: insertMovement.type,
-          reason: insertMovement.reason,
-          notes: insertMovement.notes ? `${existingMovement.notes || ''} ${insertMovement.notes}`.trim() : existingMovement.notes,
-          createdAt: new Date(), // Update timestamp
-        })
-        .where(eq(stockMovements.id, existingMovement.id));
-      
-      // Get updated movement
-      const updatedMovementResult = await db.select().from(stockMovements)
-        .where(eq(stockMovements.id, existingMovement.id));
-      movement = updatedMovementResult[0];
+      if (existingAdjustment.length > 0) {
+        // Update existing adjustment record by adding the new quantity
+        const existingMovement = existingAdjustment[0];
+        const newQuantity = existingMovement.quantity + insertMovement.quantity;
+        
+        await db.update(stockMovements)
+          .set({
+            quantity: newQuantity,
+            notes: insertMovement.notes ? `${existingMovement.notes || ''} ${insertMovement.notes}`.trim() : existingMovement.notes,
+            createdAt: new Date(), // Update timestamp
+          })
+          .where(eq(stockMovements.id, existingMovement.id));
+        
+        // Get updated movement
+        const updatedMovementResult = await db.select().from(stockMovements)
+          .where(eq(stockMovements.id, existingMovement.id));
+        movement = updatedMovementResult[0];
+      } else {
+        // Create new adjustment record
+        const id = randomUUID();
+        await db.insert(stockMovements).values({
+          ...insertMovement,
+          id,
+        });
+        
+        const movementResult = await db.select().from(stockMovements).where(eq(stockMovements.id, id));
+        movement = movementResult[0];
+      }
     } else {
-      // Create new record
+      // For all other reasons (like 'Initial Stock'), always create a new record
       const id = randomUUID();
       await db.insert(stockMovements).values({
         ...insertMovement,
@@ -414,7 +418,7 @@ export class DatabaseStorage implements IStorage {
       movement = movementResult[0];
     }
 
-    // Use atomic update to avoid race conditions
+    // Use atomic update to avoid race conditions - this should always happen based on the new movement
     if (insertMovement.type === "in") {
       await db.update(products)
         .set({

@@ -1,1 +1,0 @@
-ALTER TABLE `orders` RENAME COLUMN `created_at` TO `date`;

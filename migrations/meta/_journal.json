@@ -5,78 +5,8 @@
     {
       "idx": 0,
       "version": "5",
-      "when": 1762408554424,
-      "tag": "0000_short_enchantress",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "5",
-      "when": 1762406894801,
-      "tag": "0002_clumsy_absorbing_man",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "5",
-      "when": 1763205521634,
-      "tag": "0003_mysterious_arachne",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "5",
-      "when": 1763270291065,
-      "tag": "0004_warm_miek",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "5",
-      "when": 1767958463381,
-      "tag": "0005_shallow_menace",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "5",
-      "when": 1767962529625,
-      "tag": "0006_add_discount_fields_to_orders",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "5",
-      "when": 1767964196478,
-      "tag": "0007_flawless_chronomancer",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "5",
-      "when": 1768024414769,
-      "tag": "0008_watery_ulik",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "5",
-      "when": 1768025000000,
-      "tag": "0009_create_payment_details_table",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "5",
-      "when": 1768207208907,
-      "tag": "0010_chubby_jimmy_woo",
-      "breakpoints": true
-    },
-    {
-      "idx": 11,
-      "version": "5",
-      "when": 1768235079672,
-      "tag": "0011_charming_hedge_knight",
+      "when": 1769771409116,
+      "tag": "0000_organic_juggernaut",
       "breakpoints": true
     }
   ]
