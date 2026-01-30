@@ -545,12 +545,28 @@ export class DatabaseStorage implements IStorage {
       mixed: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
     };
 
-    todaysOrders.forEach(order => {
+    // Process regular (non-mixed) orders
+    const regularOrders = todaysOrders.filter(order => order.paymentMethod !== 'mixed');
+    regularOrders.forEach(order => {
       const method = order.paymentMethod || 'cash';
       const amount = Math.floor(parseFloat(order.totalAmount.toString()));
       paymentMethodBreakdown[method].revenue += amount;
       paymentMethodBreakdown[method].count += 1;
     });
+
+    // Process mixed payment orders
+    const mixedOrders = todaysOrders.filter(order => order.paymentMethod === 'mixed');
+    for (const order of mixedOrders) {
+      const payments = await db.select().from(paymentDetails).where(eq(paymentDetails.orderId, order.id));
+      payments.forEach(payment => {
+        const method = payment.paymentMethod;
+        const amount = Math.floor(parseFloat(payment.amount.toString()));
+        paymentMethodBreakdown[method].revenue += amount;
+        paymentMethodBreakdown[method].count += 1;
+      });
+    }
+
+
 
     todaysReturns.forEach(ret => {
       const method = ret.paymentMethod || 'cash';

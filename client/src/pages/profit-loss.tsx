@@ -363,11 +363,31 @@ export default function ProfitLoss() {
       mixed: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
     };
     
-    todaysOrders.forEach(order => {
+    // Process regular (non-mixed) orders
+    const regularOrders = todaysOrders.filter(order => order.paymentMethod !== 'mixed');
+    regularOrders.forEach(order => {
       const method = order.paymentMethod || 'cash';
       const amount = parseFloat(order.totalAmount.toString());
       paymentMethodBreakdown[method].revenue += amount;
       paymentMethodBreakdown[method].count += 1;
+    });
+    
+    // Process mixed payment orders (if payment details are available)
+    const mixedOrders = todaysOrders.filter(order => order.paymentMethod === 'mixed');
+    mixedOrders.forEach(order => {
+      if (order.payments && order.payments.length > 0) {
+        order.payments.forEach(payment => {
+          const method = payment.paymentMethod;
+          const amount = parseFloat(payment.amount.toString());
+          paymentMethodBreakdown[method].revenue += amount;
+          paymentMethodBreakdown[method].count += 1;
+        });
+      } else {
+        // Fallback: if no payment details, count as mixed
+        const amount = parseFloat(order.totalAmount.toString());
+        paymentMethodBreakdown.mixed.revenue += amount;
+        paymentMethodBreakdown.mixed.count += 1;
+      }
     });
     
     todaysReturns.forEach(ret => {
@@ -795,15 +815,53 @@ export default function ProfitLoss() {
                     
                     <div className="mt-6">
                       <h4 className="font-medium mb-3">Payment Method Breakdown</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        {Object.entries((apiTodaysEarnings as any).paymentMethodBreakdown)
+                          .filter(([_, data]: [string, any]) => data.revenue > 0 || data.refundAmount > 0)
+                          .map(([method, data]: [string, any]) => {
+                            const methodName = method.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                            const isPositive = data.revenue - data.refundAmount > 0;
+                            return (
+                              <Card key={method} className="border shadow-sm">
+                                <CardHeader className="pb-2">
+                                  <CardTitle className="text-sm font-medium text-center">{methodName}</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="text-center space-y-1">
+                                    <div className="text-2xl font-bold" style={{ color: isPositive ? '#10b981' : '#ef4444' }}>
+                                      ₹{Math.abs(data.revenue - data.refundAmount).toFixed(2)}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {data.count} sale{data.count !== 1 ? 's' : ''}
+                                    </div>
+                                    {data.refunds > 0 && (
+                                      <div className="text-xs text-red-500">
+                                        {data.refunds} refund{data.refunds !== 1 ? 's' : ''}
+                                      </div>
+                                    )}
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            );
+                          })
+                        }
+                        {Object.entries((apiTodaysEarnings as any).paymentMethodBreakdown).filter(([_, data]: [string, any]) => data.revenue > 0 || data.refundAmount > 0).length === 0 && (
+                          <div className="col-span-full text-center py-8 text-muted-foreground">
+                            No payment data for today
+                          </div>
+                        )}
+                      </div>
+                      
                       <div className="rounded-md border">
                         <Table>
                           <TableHeader>
                             <TableRow>
                               <TableHead>Payment Method</TableHead>
-                              <TableHead className="text-right">Sales</TableHead>
+                              <TableHead className="text-right">Sales Count</TableHead>
                               <TableHead className="text-right">Revenue</TableHead>
-                              <TableHead className="text-right">Refunds</TableHead>
+                              <TableHead className="text-right">Refunds Count</TableHead>
                               <TableHead className="text-right">Refund Amount</TableHead>
+                              <TableHead className="text-right">Net Amount</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -822,12 +880,15 @@ export default function ProfitLoss() {
                                   <TableCell className="text-right text-red-600 font-semibold">
                                     ₹{data.refundAmount.toFixed(2)}
                                   </TableCell>
+                                  <TableCell className={`text-right font-semibold ${data.revenue - data.refundAmount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    ₹{(data.revenue - data.refundAmount).toFixed(2)}
+                                  </TableCell>
                                 </TableRow>
                               ))
                             }
                             {Object.entries((apiTodaysEarnings as any).paymentMethodBreakdown).filter(([_, data]: [string, any]) => data.revenue > 0 || data.refundAmount > 0).length === 0 && (
                               <TableRow>
-                                <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">
+                                <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
                                   No payment data for today
                                 </TableCell>
                               </TableRow>
