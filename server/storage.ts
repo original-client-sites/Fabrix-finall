@@ -279,6 +279,15 @@ export class DatabaseStorage implements IStorage {
     const finalTotalInt = Math.floor(finalTotal);
     const discountAmountInt = Math.floor(discountAmount);
     
+    console.log('Order calculation details:', {
+      originalSubtotal: subtotal,
+      calculatedDiscountAmount: discountAmount,
+      calculatedTotal: finalTotal,
+      finalTotalInt,
+      discountAmountInt,
+      discountPercentage
+    });
+    
     await db.insert(orders).values({
       ...orderData,
       id,
@@ -501,19 +510,19 @@ export class DatabaseStorage implements IStorage {
         sql`${stockMovements.createdAt} < ${tomorrow}`
       ));
 
-    // Calculate revenue from orders
+    // Calculate revenue from orders (using integers)
     const revenue = todaysOrders.reduce((sum, order) => {
-      return sum + parseFloat(order.totalAmount.toString());
+      return sum + Math.floor(parseFloat(order.totalAmount.toString()));
     }, 0);
 
-    // Calculate refunds from returns
+    // Calculate refunds from returns (using integers)
     const refundAmount = todaysReturns.reduce((sum, ret) => {
-      return sum + (ret.refundAmount ? parseFloat(ret.refundAmount.toString()) : 0);
+      return sum + (ret.refundAmount ? Math.floor(parseFloat(ret.refundAmount.toString())) : 0);
     }, 0);
 
-    // Calculate purchase costs
+    // Calculate purchase costs (using integers)
     const purchaseCost = todaysAccounts.reduce((sum, acc) => {
-      return sum + parseFloat(acc.cost.toString());
+      return sum + Math.floor(parseFloat(acc.cost.toString()));
     }, 0);
 
     // Calculate purchase return costs
@@ -538,7 +547,7 @@ export class DatabaseStorage implements IStorage {
 
     todaysOrders.forEach(order => {
       const method = order.paymentMethod || 'cash';
-      const amount = parseFloat(order.totalAmount.toString());
+      const amount = Math.floor(parseFloat(order.totalAmount.toString()));
       paymentMethodBreakdown[method].revenue += amount;
       paymentMethodBreakdown[method].count += 1;
     });
@@ -546,7 +555,7 @@ export class DatabaseStorage implements IStorage {
     todaysReturns.forEach(ret => {
       const method = ret.paymentMethod || 'cash';
       if (ret.refundAmount) {
-        const amount = parseFloat(ret.refundAmount.toString());
+        const amount = Math.floor(parseFloat(ret.refundAmount.toString()));
         paymentMethodBreakdown[method].refunds += 1;
         paymentMethodBreakdown[method].refundAmount += amount;
       }
@@ -794,7 +803,7 @@ export class DatabaseStorage implements IStorage {
 
   async getTotalPaidForOrder(orderId: string): Promise<number> {
     const payments = await this.getPaymentsByOrder(orderId);
-    return payments.reduce((sum, payment) => sum + parseFloat(payment.amount), 0);
+    return payments.reduce((sum, payment) => sum + Math.floor(parseFloat(payment.amount)), 0);
   }
 }
 

@@ -148,17 +148,3 @@ CREATE TABLE `stock_movements` (
 	`created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
 	CONSTRAINT `stock_movements_id` PRIMARY KEY(`id`)
 );
---> statement-breakpoint
-CREATE TABLE `stock_stats` (
-	`id` varchar(36) NOT NULL,
-	`product_id` varchar(36) NOT NULL,
-	`product_name` varchar(255) NOT NULL,
-	`sku` varchar(100) NOT NULL,
-	`category` varchar(100) NOT NULL,
-	`available` int NOT NULL DEFAULT 0,
-	`sold` int NOT NULL DEFAULT 0,
-	`returned` int NOT NULL DEFAULT 0,
-	`purchased` int NOT NULL DEFAULT 0,
-	`updated_at` timestamp DEFAULT CURRENT_TIMESTAMP,
-	CONSTRAINT `stock_stats_id` PRIMARY KEY(`id`)
-);
