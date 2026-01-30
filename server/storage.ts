@@ -534,15 +534,12 @@ export class DatabaseStorage implements IStorage {
     const cost = purchaseCost - purchaseReturnCost;
     const profit = revenue - refundAmount - cost;
 
-    // Payment methods breakdown
+    // Payment methods breakdown - with proper mixed payment distribution
     const paymentMethodBreakdown: Record<string, { revenue: number; count: number; refunds: number; refundAmount: number }> = {
       cash: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
       credit_card: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
       debit_card: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
       upi: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
-      bank_transfer: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
-      store_credit: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
-      mixed: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
     };
 
     // Process regular (non-mixed) orders

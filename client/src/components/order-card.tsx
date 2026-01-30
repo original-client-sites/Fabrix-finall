@@ -147,11 +147,11 @@ export function OrderCard({ order }: OrderCardProps) {
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 lg:gap-6">
             <div>
               <p className="text-sm text-muted-foreground mb-1">Total Amount</p>
-              <p className="text-2xl font-bold" data-testid={`text-total-${order.id}`}>₹{order.totalAmount}</p>
-              {order.discountAmount && parseFloat(order.discountAmount) > 0 && (
+              <p className="text-2xl font-bold" data-testid={`text-total-${order.id}`}>₹{order.totalAmount?.toString()}</p>
+              {order.discountAmount && parseFloat(order.discountAmount?.toString() || '0') > 0 && (
                 <div className="text-sm mt-1">
-                  <p className="text-muted-foreground line-through">Subtotal: ₹{order.subTotal}</p>
-                  <p className="text-green-600 font-medium">Discount: -₹{order.discountAmount}{order.discountPercentage && parseFloat(order.discountPercentage) > 0 && ` (${order.discountPercentage}%)`}</p>
+                  <p className="text-muted-foreground line-through">Subtotal: ₹{order.subTotal?.toString()}</p>
+                  <p className="text-green-600 font-medium">Discount: -₹{order.discountAmount?.toString()}{order.discountPercentage && parseFloat(order.discountPercentage?.toString() || '0') > 0 && ` (${order.discountPercentage}%)`}</p>
                 </div>
               )}
             </div>
@@ -185,7 +185,7 @@ export function OrderCard({ order }: OrderCardProps) {
                       {order.payments.map((payment, idx) => (
                         <div key={idx} className="flex justify-between">
                           <span className="capitalize">{payment.paymentMethod.replace(/_/g, ' ')}:</span>
-                          <span>₹{parseFloat(payment.amount).toFixed(2)}</span>
+                          <span>₹{typeof payment.amount === 'number' ? payment.amount.toFixed(2) : parseFloat(payment.amount?.toString() || '0').toFixed(2)}</span>
                         </div>
                       ))}
                     </div>
@@ -212,8 +212,8 @@ export function OrderCard({ order }: OrderCardProps) {
                     </span>
                   </div>
                   <div className="flex items-center gap-4 flex-shrink-0">
-                    <span className="text-muted-foreground">Qty: {item.quantity}</span>
-                    <span className="font-medium min-w-[80px] text-right">₹{item.subtotal}</span>
+                    <span className="text-muted-foreground">Qty: {item.quantity?.toString()}</span>
+                    <span className="font-medium min-w-[80px] text-right">₹{item.subtotal?.toString()}</span>
                   </div>
                 </div>
               ))}
@@ -250,7 +250,7 @@ export function OrderCard({ order }: OrderCardProps) {
                       <div key={item.id} className="flex justify-between items-start">
                         <div className="flex-1">
                           <span className="text-muted-foreground">Returned: </span>
-                          <span>{item.productName} (x{item.quantity})</span>
+                          <span>{item.productName} (x{item.quantity?.toString()})</span>
                           {item.exchangeProductName && (
                             <div className="ml-2 text-xs text-blue-600">
                               ↻ Exchanged for: {item.exchangeProductName}
@@ -262,19 +262,19 @@ export function OrderCard({ order }: OrderCardProps) {
                   </div>
                   <div className="flex justify-between items-center pt-2 border-t border-border/50 text-sm">
                     <div className="space-y-1">
-                      {ret.exchangeValue && parseFloat(ret.exchangeValue) > 0 && (
+                      {ret.exchangeValue && parseFloat(ret.exchangeValue?.toString() || '0') > 0 && (
                         <div className="text-muted-foreground">
-                          Exchange Value: <span className="font-medium">₹{ret.exchangeValue}</span>
+                          Exchange Value: <span className="font-medium">₹{ret.exchangeValue?.toString()}</span>
                         </div>
                       )}
-                      {ret.refundAmount && parseFloat(ret.refundAmount) > 0 && (
+                      {ret.refundAmount && parseFloat(ret.refundAmount?.toString() || '0') > 0 && (
                         <div className="text-green-600">
-                          Refunded: <span className="font-semibold">₹{ret.refundAmount}</span>
+                          Refunded: <span className="font-semibold">₹{ret.refundAmount?.toString()}</span>
                         </div>
                       )}
-                      {ret.additionalPayment && parseFloat(ret.additionalPayment) > 0 && (
+                      {ret.additionalPayment && parseFloat(ret.additionalPayment?.toString() || '0') > 0 && (
                         <div className="text-orange-600">
-                          Additional Payment: <span className="font-semibold">₹{ret.additionalPayment}</span>
+                          Additional Payment: <span className="font-semibold">₹{ret.additionalPayment?.toString()}</span>
                         </div>
                       )}
                     </div>
@@ -316,7 +316,7 @@ export function OrderCard({ order }: OrderCardProps) {
 Thanks for visiting Fabrix and shopping with us! 👕😊
 
 Your invoice for order #${order.orderNumber} is attached here.
-Total: ₹${parseFloat(order.totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+Total: ₹${typeof order.totalAmount === 'number' ? order.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : parseFloat(order.totalAmount?.toString() || '0').toLocaleString('en-IN', { minimumFractionDigits: 2 })}
 
 📍 SUPER MALL-2, FF/152, Infocity, Gandhinagar, Gujarat 382007
 
