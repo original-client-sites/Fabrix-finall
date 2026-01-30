@@ -53,7 +53,9 @@ export default function StoreCredits() {
   const filteredCodes = discountCodes.filter((code) => {
     const matchesSearch =
       code.customerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      code.code.toLowerCase().includes(searchQuery.toLowerCase());
+      code.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ((code as any).customerName && (code as any).customerName.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      ((code as any).customerPhone && (code as any).customerPhone.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesSearch;
   });
 
@@ -82,7 +84,7 @@ export default function StoreCredits() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by customer email or code..."
+                placeholder="Search by customer name, email, phone, or code..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -130,7 +132,9 @@ export default function StoreCredits() {
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          <TableHead>Customer Name</TableHead>
                           <TableHead>Customer Email</TableHead>
+                          <TableHead>Phone Number</TableHead>
                           <TableHead>Code</TableHead>
                           <TableHead>Credit Amount</TableHead>
                           <TableHead>Issued Date</TableHead>
@@ -142,7 +146,13 @@ export default function StoreCredits() {
                         {unusedCodes.map((code) => (
                           <TableRow key={code.id}>
                             <TableCell className="font-medium">
+                              {(code as any).customerName || '-'}
+                            </TableCell>
+                            <TableCell>
                               {code.customerEmail}
+                            </TableCell>
+                            <TableCell>
+                              {(code as any).customerPhone || '-'}
                             </TableCell>
                             <TableCell>
                               <code className="bg-muted px-2 py-1 rounded text-sm">
@@ -211,7 +221,9 @@ export default function StoreCredits() {
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          <TableHead>Customer Name</TableHead>
                           <TableHead>Customer Email</TableHead>
+                          <TableHead>Phone Number</TableHead>
                           <TableHead>Code</TableHead>
                           <TableHead>Credit Amount</TableHead>
                           <TableHead>Issued Date</TableHead>
@@ -223,7 +235,13 @@ export default function StoreCredits() {
                         {usedCodes.map((code) => (
                           <TableRow key={code.id} className="opacity-60">
                             <TableCell className="font-medium">
+                              {(code as any).customerName || '-'}
+                            </TableCell>
+                            <TableCell>
                               {code.customerEmail}
+                            </TableCell>
+                            <TableCell>
+                              {(code as any).customerPhone || '-'}
                             </TableCell>
                             <TableCell>
                               <code className="bg-muted px-2 py-1 rounded text-sm line-through">

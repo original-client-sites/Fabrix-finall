@@ -90,16 +90,29 @@ export function UseCreditDialog({ open, onOpenChange, credit }: UseCreditDialogP
       form.setValue("customerEmail", credit.customerEmail);
       form.setValue("notes", `Store credit code: ${credit.code}`);
       
-      if (previousOrders.length > 0) {
-        const mostRecentOrder = previousOrders.sort(
-          (a, b) => new Date(b.date!).getTime() - new Date(a.date!).getTime()
-        )[0];
-        
-        form.setValue("customerName", mostRecentOrder.customerName);
-        if (mostRecentOrder.customerPhone) {
-          form.setValue("customerPhone", mostRecentOrder.customerPhone);
+      // Use customer name and phone from credit if available
+      if ((credit as any).customerName) {
+        form.setValue("customerName", (credit as any).customerName);
+      }
+      if ((credit as any).customerPhone) {
+        form.setValue("customerPhone", (credit as any).customerPhone);
+      }
+      
+      // Fallback to previous orders if credit doesn't have customer info
+      if (!(credit as any).customerName || !(credit as any).customerPhone) {
+        if (previousOrders.length > 0) {
+          const mostRecentOrder = previousOrders.sort(
+            (a, b) => new Date(b.date!).getTime() - new Date(a.date!).getTime()
+          )[0];
+          
+          if (!(credit as any).customerName && mostRecentOrder.customerName) {
+            form.setValue("customerName", mostRecentOrder.customerName);
+          }
+          if (!(credit as any).customerPhone && mostRecentOrder.customerPhone) {
+            form.setValue("customerPhone", mostRecentOrder.customerPhone);
+          }
+          form.setValue("status", mostRecentOrder.status as "pending" | "processing" | "shipped" | "delivered" | "cancelled");
         }
-        form.setValue("status", mostRecentOrder.status as "pending" | "processing" | "shipped" | "delivered" | "cancelled");
       }
     }
   }, [credit, open, previousOrders]);

@@ -276,7 +276,7 @@ export class DatabaseStorage implements IStorage {
     
     // Ensure finalTotal is not negative and convert to integer
     finalTotal = Math.max(0, finalTotal);
-    const finalTotalInt = Math.floor(finalTotal);
+    const finalTotalInt = Math.ceil(finalTotal* 100)/100;
     const discountAmountInt = Math.floor(discountAmount);
     
     console.log('Order calculation details:', {
@@ -681,11 +681,43 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Discount codes
-  async getDiscountCodes(customerEmail?: string): Promise<DiscountCode[]> {
+  async getDiscountCodes(customerEmail?: string): Promise<(DiscountCode & { customerName?: string; customerPhone?: string })[]> {
     if (customerEmail) {
-      return await db.select().from(discountCodes).where(eq(discountCodes.customerEmail, customerEmail));
+      const codes = await db.select().from(discountCodes).where(eq(discountCodes.customerEmail, customerEmail));
+      
+      // Get customer details from most recent order
+      const customerOrders = await db.select().from(orders).where(eq(orders.customerEmail, customerEmail)).orderBy(orders.date);
+      if (customerOrders.length > 0) {
+        const latestOrder = customerOrders[customerOrders.length - 1];
+        return codes.map(code => ({
+          ...code,
+          customerName: latestOrder.customerName || '',
+          customerPhone: latestOrder.customerPhone || ''
+        }));
+      }
+      
+      return codes;
     }
-    return await db.select().from(discountCodes);
+    
+    // For all codes, get customer details
+    const codes = await db.select().from(discountCodes);
+    const enrichedCodes = [];
+    
+    for (const code of codes) {
+      const customerOrders = await db.select().from(orders).where(eq(orders.customerEmail, code.customerEmail)).orderBy(orders.date);
+      if (customerOrders.length > 0) {
+        const latestOrder = customerOrders[customerOrders.length - 1];
+        enrichedCodes.push({
+          ...code,
+          customerName: latestOrder.customerName || '',
+          customerPhone: latestOrder.customerPhone || ''
+        });
+      } else {
+        enrichedCodes.push(code);
+      }
+    }
+    
+    return enrichedCodes;
   }
 
   async getDiscountCode(code: string): Promise<DiscountCode | null> {

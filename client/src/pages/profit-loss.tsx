@@ -866,7 +866,8 @@ export default function ProfitLoss() {
                           </TableHeader>
                           <TableBody>
                             {Object.entries((apiTodaysEarnings as any).paymentMethodBreakdown)
-                              .filter(([_, data]: [string, any]) => data.revenue > 0 || data.refundAmount > 0)
+                              .filter(([method, data]: [string, any]) => data.revenue > 0 || data.refundAmount > 0)
+                              .filter(([method, data]: [string, any]) => method !== 'mixed')
                               .map(([method, data]: [string, any]) => (
                                 <TableRow key={method}>
                                   <TableCell className="font-medium">
@@ -886,7 +887,7 @@ export default function ProfitLoss() {
                                 </TableRow>
                               ))
                             }
-                            {Object.entries((apiTodaysEarnings as any).paymentMethodBreakdown).filter(([_, data]: [string, any]) => data.revenue > 0 || data.refundAmount > 0).length === 0 && (
+                            {Object.entries((apiTodaysEarnings as any).paymentMethodBreakdown).filter(([method, data]: [string, any]) => (data.revenue > 0 || data.refundAmount > 0) && method !== 'mixed').length === 0 && (
                               <TableRow>
                                 <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
                                   No payment data for today
