@@ -27,17 +27,6 @@ import type { StockMovement, Product } from "@shared/schema";
 
 type SortField = "productName" | "sku" | "category" | "available" | "sold" | "returned" | "purchaseReturn" | "purchased" | "initialStock";
 type SortOrder = "asc" | "desc";
-
-interface StockStats {
-  productId: string;
-  available: number;
-  sold: number;
-  returned: number;
-  purchaseReturn: number;
-  purchased: number;
-  initialStock: number;
-}
-
 export default function StockHistory() {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isStockDialogOpen, setIsStockDialogOpen] = useState(false);
@@ -110,8 +99,8 @@ export default function StockHistory() {
 
   // Calculate per-product stock statistics
   const stockStats = useMemo(() => {
-    const statsMap = new Map<string, StockStats>();
-
+    const statsMap = new Map<string, any>();
+  
     // Initialize with zeros
     products.forEach(p => {
       statsMap.set(p.id, {
@@ -124,13 +113,13 @@ export default function StockHistory() {
         initialStock: 0,
       });
     });
-
+  
     // Process stock movements to calculate initial stock, sold, returned, and purchased
     movements.forEach(m => {
       const currentStats = statsMap.get(m.productId);
       if (!currentStats) return;
       const reasonLower = m.reason.toLowerCase();
-
+  
       switch (m.type) {
         case "in":
           if (reasonLower === "initial stock") {
@@ -154,41 +143,17 @@ export default function StockHistory() {
           break;
       }
     });
-
-    // Process orders to count sold items
-    orders.forEach(order => {
-      if (order.items && Array.isArray(order.items)) {
-        order.items.forEach((item: any) => {
-          const stats = statsMap.get(item.productId);
-          if (stats) {
-            stats.sold += item.quantity;
-          }
-        });
-      }
-    });
-
-    // Process returns to count returned items
-    returns.forEach(ret => {
-      if (ret.items && Array.isArray(ret.items)) {
-        ret.items.forEach((item: any) => {
-          const stats = statsMap.get(item.productId);
-          if (stats) {
-            stats.returned += item.quantity;
-          }
-        });
-      }
-    });
-
+  
     // Calculate available stock using the proper formula
     // available = initialStock + purchased - sold + returned - purchaseReturn
     // This ensures purchase returns are properly deducted from available stock
     Array.from(statsMap.values()).forEach(stats => {
       stats.available = stats.initialStock + stats.purchased - stats.sold + stats.returned - stats.purchaseReturn;
     });
-
+  
     return Array.from(statsMap.values());
-  }, [products, movements, orders, returns]);
-
+  }, [products, movements]);
+  
 
   // Prepare product data for the table using stock stats
   const productStockData = useMemo(() => {

@@ -415,6 +415,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/todays-earnings", async (_req, res) => {
+    try {
+      const earnings = await storage.getTodaysEarnings();
+      res.json(earnings);
+    } catch (error) {
+      console.error('Error fetching today\'s earnings:', error);
+      res.status(500).json({ error: "Failed to fetch today's earnings" });
+    }
+  });
+
   // Stock stats routes
   app.get("/api/stock-stats", async (_req, res) => {
     try {

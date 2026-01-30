@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Edit, Trash2, QrCode, Package, TrendingUp } from "lucide-react";
+import { Edit, Trash2, QrCode, Package, TrendingUp, ShoppingCart } from "lucide-react";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,7 @@ import { ProductDialog } from "./product-dialog";
 import { QRCodeDialog } from "./qr-code-dialog";
 import { DeleteProductDialog } from "./delete-product-dialog";
 import { StockMovementDialog } from "./stock-movement-dialog";
+import { PurchaseDialog } from "./purchase-dialog";
 import type { Product } from "@shared/schema";
 
 interface ProductCardProps {
@@ -19,6 +20,7 @@ export function ProductCard({ product, viewMode }: ProductCardProps) {
   const [isQRDialogOpen, setIsQRDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isStockDialogOpen, setIsStockDialogOpen] = useState(false);
+  const [isPurchaseDialogOpen, setIsPurchaseDialogOpen] = useState(false);
 
   const stockStatus =
     product.stockQuantity === 0
@@ -80,6 +82,15 @@ export function ProductCard({ product, viewMode }: ProductCardProps) {
                   <Button
                     variant="outline"
                     size="icon"
+                    onClick={() => setIsPurchaseDialogOpen(true)}
+                    data-testid={`button-purchase-${product.id}`}
+                    title="Record Purchase/Purchase Return"
+                  >
+                    <ShoppingCart className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
                     onClick={() => setIsStockDialogOpen(true)}
                     data-testid={`button-stock-${product.id}`}
                     title="Manage Stock"
@@ -124,6 +135,11 @@ export function ProductCard({ product, viewMode }: ProductCardProps) {
         <QRCodeDialog
           open={isQRDialogOpen}
           onOpenChange={setIsQRDialogOpen}
+          product={product}
+        />
+        <PurchaseDialog
+          open={isPurchaseDialogOpen}
+          onOpenChange={setIsPurchaseDialogOpen}
           product={product}
         />
         <StockMovementDialog
@@ -178,15 +194,14 @@ export function ProductCard({ product, viewMode }: ProductCardProps) {
           )}
         </CardContent>
         <CardFooter className="p-6 pt-0 flex gap-2">
+          
           <Button
             variant="outline"
-            size="sm"
-            className="flex-1"
+            size="icon"
             onClick={() => setIsStockDialogOpen(true)}
             data-testid={`button-stock-${product.id}`}
           >
-            <TrendingUp className="h-4 w-4 mr-2" />
-            Stock
+            <TrendingUp className="h-4 w-4" />
           </Button>
           <Button
             variant="outline"
@@ -196,13 +211,15 @@ export function ProductCard({ product, viewMode }: ProductCardProps) {
           >
             <QrCode className="h-4 w-4" />
           </Button>
-          <Button
+         <Button
             variant="outline"
-            size="icon"
-            onClick={() => setIsEditDialogOpen(true)}
-            data-testid={`button-edit-${product.id}`}
+            size="sm"
+            className="flex-1"
+            onClick={() => setIsPurchaseDialogOpen(true)}
+            data-testid={`button-purchase-${product.id}`}
           >
-            <Edit className="h-4 w-4" />
+            <ShoppingCart className="h-4 w-4 mr-2" />
+            Purchase
           </Button>
           <Button
             variant="outline"
@@ -223,6 +240,11 @@ export function ProductCard({ product, viewMode }: ProductCardProps) {
       <QRCodeDialog
         open={isQRDialogOpen}
         onOpenChange={setIsQRDialogOpen}
+        product={product}
+      />
+      <PurchaseDialog
+        open={isPurchaseDialogOpen}
+        onOpenChange={setIsPurchaseDialogOpen}
         product={product}
       />
       <StockMovementDialog

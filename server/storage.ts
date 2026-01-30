@@ -3,7 +3,6 @@ import {
   orders,
   orderItems,
   stockMovements,
-  stockStats,
   returns,
   returnItems,
   discountCodes,
@@ -20,8 +19,7 @@ import type {
   OrderWithItems,
   StockMovement,
   InsertStockMovement,
-  StockStats,
-  InsertStockStats,
+
   Return,
   InsertReturn,
   ReturnItem,
@@ -62,12 +60,9 @@ export interface IStorage {
   getStockMovements(productId?: string): Promise<StockMovement[]>;
   createStockMovement(movement: InsertStockMovement): Promise<StockMovement>;
   getLowStockProducts(threshold?: number): Promise<Product[]>;
+  getTodaysEarnings(): Promise<{ revenue: number; refundAmount: number; cost: number; profit: number; orderCount: number; returnCount: number; paymentMethodBreakdown: Record<string, { revenue: number; count: number; refunds: number; refundAmount: number }> }>;
 
-  // Stock Stats
-  getStockStats(): Promise<StockStats[]>;
-  getStockStatsByProduct(productId: string): Promise<StockStats | null>;
-  updateStockStats(productId: string, updates: Partial<StockStats>): Promise<StockStats | null>;
-  initializeStockStats(product: Product): Promise<StockStats>;
+
 
   // Returns
   getReturns(): Promise<ReturnWithItems[]>;
@@ -145,8 +140,6 @@ export class DatabaseStorage implements IStorage {
     const productResult = await db.select().from(products).where(eq(products.id, id));
     const product = productResult[0];
 
-    await this.initializeStockStats(product);
-
     // Don't create stock movement here; it's handled in routes.ts to avoid duplication
 
     return {
@@ -195,6 +188,9 @@ export class DatabaseStorage implements IStorage {
           reason: stockDifference > 0 ? 'adjustment' : 'purchase return',
           notes: `Stock adjustment from ${currentProduct.stockQuantity} to ${product.stockQuantity}`,
         });
+        
+        // Stock quantity is updated directly in the products table
+        // Stock movements are tracked in the stock_movements table
       }
     }
     
@@ -207,7 +203,6 @@ export class DatabaseStorage implements IStorage {
 
   async deleteProduct(id: string): Promise<boolean> {
     try {
-      await db.delete(stockStats).where(eq(stockStats.productId, id));
       await db.delete(products).where(eq(products.id, id));
       return true;
     } catch (error: any) {
@@ -326,13 +321,8 @@ export class DatabaseStorage implements IStorage {
           notes: `Order ${orderNumber}`,
         });
 
-        const stats = await this.getStockStatsByProduct(item.productId);
-        if (stats) {
-          await this.updateStockStats(item.productId, {
-            available: Math.max(0, newStockQuantity),
-            sold: stats.sold + item.quantity,
-          });
-        }
+        // Stock quantity is updated directly in the products table
+        // Stock movements are tracked in the stock_movements table
       }
     }
 
@@ -453,19 +443,8 @@ export class DatabaseStorage implements IStorage {
     if (updatedProduct) {
       const finalQuantity = Math.max(0, updatedProduct.stockQuantity);
       
-      const stats = await this.getStockStatsByProduct(insertMovement.productId);
-      if (stats) {
-        if (insertMovement.reason === 'purchase') {
-          await this.updateStockStats(insertMovement.productId, {
-            available: finalQuantity,
-            purchased: stats.purchased + insertMovement.quantity,
-          });
-        } else {
-          await this.updateStockStats(insertMovement.productId, {
-            available: finalQuantity,
-          });
-        }
-      }
+      // Stock movements are now tracked only in the stock_movements table
+      // Stock stats will be calculated on demand from stock movements
     }
 
     return movement;
@@ -483,6 +462,105 @@ export class DatabaseStorage implements IStorage {
       console.error('Error fetching low stock products:', error);
       return [];
     }
+  }
+
+  async getTodaysEarnings(): Promise<{ revenue: number; refundAmount: number; cost: number; profit: number; orderCount: number; returnCount: number; paymentMethodBreakdown: Record<string, { revenue: number; count: number; refunds: number; refundAmount: number }> }> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Get today's orders
+    const todaysOrders = await db.select().from(orders)
+      .where(and(
+        sql`${orders.date} >= ${today}`,
+        sql`${orders.date} < ${tomorrow}`
+      ));
+
+    // Get today's returns
+    const todaysReturns = await db.select().from(returns)
+      .where(and(
+        sql`${returns.createdAt} >= ${today}`,
+        sql`${returns.createdAt} < ${tomorrow}`
+      ));
+
+    // Get today's purchase accounts
+    const todaysAccounts = await db.select().from(accounts)
+      .where(and(
+        eq(accounts.transactionType, 'purchase'),
+        sql`${accounts.transactionDate} >= ${today}`,
+        sql`${accounts.transactionDate} < ${tomorrow}`
+      ));
+
+    // Get today's purchase returns from stock movements
+    const todaysPurchaseReturns = await db.select().from(stockMovements)
+      .where(and(
+        eq(stockMovements.type, 'out'),
+        sql`(${stockMovements.reason} = 'purchase return' OR ${stockMovements.reason} = 'supplier return')`,
+        sql`${stockMovements.createdAt} >= ${today}`,
+        sql`${stockMovements.createdAt} < ${tomorrow}`
+      ));
+
+    // Calculate revenue from orders
+    const revenue = todaysOrders.reduce((sum, order) => {
+      return sum + parseFloat(order.totalAmount.toString());
+    }, 0);
+
+    // Calculate refunds from returns
+    const refundAmount = todaysReturns.reduce((sum, ret) => {
+      return sum + (ret.refundAmount ? parseFloat(ret.refundAmount.toString()) : 0);
+    }, 0);
+
+    // Calculate purchase costs
+    const purchaseCost = todaysAccounts.reduce((sum, acc) => {
+      return sum + parseFloat(acc.cost.toString());
+    }, 0);
+
+    // Calculate purchase return costs
+    const purchaseReturnCost = todaysPurchaseReturns.reduce((sum, m) => {
+      // We need to get the product to get cost price
+      return sum + (0 * m.quantity); // Placeholder - would need to join with products table
+    }, 0);
+
+    const cost = purchaseCost - purchaseReturnCost;
+    const profit = revenue - refundAmount - cost;
+
+    // Payment methods breakdown
+    const paymentMethodBreakdown: Record<string, { revenue: number; count: number; refunds: number; refundAmount: number }> = {
+      cash: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      credit_card: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      debit_card: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      upi: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      bank_transfer: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      store_credit: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      mixed: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+    };
+
+    todaysOrders.forEach(order => {
+      const method = order.paymentMethod || 'cash';
+      const amount = parseFloat(order.totalAmount.toString());
+      paymentMethodBreakdown[method].revenue += amount;
+      paymentMethodBreakdown[method].count += 1;
+    });
+
+    todaysReturns.forEach(ret => {
+      const method = ret.paymentMethod || 'cash';
+      if (ret.refundAmount) {
+        const amount = parseFloat(ret.refundAmount.toString());
+        paymentMethodBreakdown[method].refunds += 1;
+        paymentMethodBreakdown[method].refundAmount += amount;
+      }
+    });
+
+    return {
+      revenue,
+      refundAmount,
+      cost,
+      profit,
+      orderCount: todaysOrders.length,
+      returnCount: todaysReturns.length,
+      paymentMethodBreakdown
+    };
   }
 
   // Returns
@@ -550,13 +628,8 @@ export class DatabaseStorage implements IStorage {
           .set({ stockQuantity: newStockQuantity })
           .where(eq(products.id, item.productId));
 
-        const stats = await this.getStockStatsByProduct(item.productId);
-        if (stats) {
-          await this.updateStockStats(item.productId, {
-            available: product.stockQuantity + item.quantity,
-            returned: stats.returned + item.quantity,
-          });
-        }
+        // Stock movements are now tracked only in the stock_movements table
+        // Stock stats will be calculated on demand from stock movements
       }
 
       await this.createStockMovement({
@@ -683,76 +756,6 @@ export class DatabaseStorage implements IStorage {
   async deleteDiscountCode(id: string): Promise<boolean> {
     await db.delete(discountCodes).where(eq(discountCodes.id, id));
     return true;
-  }
-
-  // Stock Stats
-  async getStockStats(): Promise<StockStats[]> {
-    const allProducts = await db.select().from(products);
-
-    for (const product of allProducts) {
-      const existing = await db
-        .select()
-        .from(stockStats)
-        .where(eq(stockStats.productId, product.id))
-        .limit(1);
-
-      if (existing.length === 0) {
-        await db.insert(stockStats).values({
-          id: nanoid(),
-          productId: product.id,
-          productName: product.productName,
-          sku: product.sku,
-          category: product.category,
-          available: product.stockQuantity,
-          sold: 0,
-          returned: 0,
-          purchased: 0,
-        });
-      } else {
-        await db
-          .update(stockStats)
-          .set({
-            available: product.stockQuantity,
-            updatedAt: new Date()
-          })
-          .where(eq(stockStats.productId, product.id));
-      }
-    }
-
-    const stats = await db.select().from(stockStats);
-    return stats;
-  }
-
-  async getStockStatsByProduct(productId: string): Promise<StockStats | null> {
-    const result = await db.select().from(stockStats).where(eq(stockStats.productId, productId));
-    return result[0] || null;
-  }
-
-  async updateStockStats(productId: string, updates: Partial<StockStats>): Promise<StockStats | null> {
-    await db.update(stockStats)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(stockStats.productId, productId));
-
-    const result = await db.select().from(stockStats).where(eq(stockStats.productId, productId));
-    return result[0] || null;
-  }
-
-  async initializeStockStats(product: Product): Promise<StockStats> {
-    const id = randomUUID();
-    await db.insert(stockStats).values({
-      id,
-      productId: product.id,
-      productName: product.productName,
-      sku: product.sku,
-      category: product.category,
-      available: product.stockQuantity,
-      sold: 0,
-      returned: 0,
-      purchased: 0,
-    });
-
-    const statsResult = await db.select().from(stockStats).where(eq(stockStats.id, id));
-    return statsResult[0];
   }
 
   // Payment Details

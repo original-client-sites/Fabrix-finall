@@ -169,30 +169,6 @@ export const insertStockMovementSchema = createInsertSchema(stockMovements, {
 export type InsertStockMovement = z.infer<typeof insertStockMovementSchema>;
 export type StockMovement = typeof stockMovements.$inferSelect;
 
-/* ---------------------- STOCK STATS ---------------------- */
-export const stockStats = mysqlTable("stock_stats", {
-  id: varchar("id", { length: 36 }).primaryKey(),
-  productId: varchar("product_id", { length: 36 }).notNull(),
-  productName: varchar("product_name", { length: 255 }).notNull(),
-  sku: varchar("sku", { length: 100 }).notNull(),
-  category: varchar("category", { length: 100 }).notNull(),
-  available: int("available").default(0).notNull(),
-  sold: int("sold").default(0).notNull(),
-  returned: int("returned").default(0).notNull(),
-  purchased: int("purchased").default(0).notNull(),
-  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
-});
-
-export const insertStockStatsSchema = createInsertSchema(stockStats, {
-  productId: z.string().min(1, "Product ID is required"),
-  productName: z.string().min(1, "Product name is required"),
-  sku: z.string().min(1, "SKU is required"),
-  category: z.string().min(1, "Category is required"),
-}).omit({ id: true, updatedAt: true });
-
-export type InsertStockStats = z.infer<typeof insertStockStatsSchema>;
-export type StockStats = typeof stockStats.$inferSelect;
-
 /* ---------------------- RETURNS ---------------------- */
 export const returns = mysqlTable("returns", {
   id: varchar("id", { length: 36 }).primaryKey(),

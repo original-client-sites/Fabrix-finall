@@ -63,6 +63,20 @@ export default function ProfitLoss() {
     queryKey: ["/api/accounts"],
   });
 
+  const { data: apiTodaysEarnings = null, isLoading: earningsLoading } = useQuery<{ 
+    revenue: number; 
+    refundAmount: number; 
+    cost: number; 
+    profit: number; 
+    orderCount: number; 
+    returnCount: number; 
+    paymentMethodBreakdown: Record<string, { revenue: number; count: number; refunds: number; refundAmount: number }>
+  } | null>({
+    queryKey: ["/api/todays-earnings"],
+    enabled: timeRange === 'daily',
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
+
   const isLoading = productsLoading || ordersLoading || returnsLoading || movementsLoading || accountsLoading;
 
   // Create a product lookup map for cost prices
@@ -740,80 +754,90 @@ export default function ProfitLoss() {
           </div>
 
           {/* Today's Earnings when time range is daily */}
-          {todaysEarnings && (
+          {(apiTodaysEarnings || (timeRange === 'daily' && !earningsLoading)) && (
             <Card className="mb-8">
               <CardHeader>
                 <CardTitle>Today's Earnings</CardTitle>
                 <CardDescription>Earnings for {format(new Date(), 'MMMM dd, yyyy')}</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                    <p className="text-sm text-blue-600 font-medium">Total Revenue</p>
-                    <p className="text-2xl font-bold text-blue-800">₹{todaysEarnings.revenue.toFixed(2)}</p>
-                    <p className="text-xs text-blue-500 mt-1">from {todaysEarnings.orderCount} orders</p>
+                {earningsLoading ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {[...Array(4)].map((_, i) => (
+                      <Skeleton key={i} className="h-24 w-full" />
+                    ))}
                   </div>
-                  <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-                    <p className="text-sm text-red-600 font-medium">Refunds</p>
-                    <p className="text-2xl font-bold text-red-800">₹{todaysEarnings.refundAmount.toFixed(2)}</p>
-                    <p className="text-xs text-red-500 mt-1">from {todaysEarnings.returnCount} returns</p>
-                  </div>
-                  <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-                    <p className="text-sm text-orange-600 font-medium">Cost</p>
-                    <p className="text-2xl font-bold text-orange-800">₹{todaysEarnings.cost.toFixed(2)}</p>
-                  </div>
-                  <div className={`${todaysEarnings.profit >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} p-4 rounded-lg border`}>
-                    <p className={`text-sm font-medium ${todaysEarnings.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>Net Profit/Loss</p>
-                    <p className={`text-2xl font-bold ${todaysEarnings.profit >= 0 ? 'text-green-800' : 'text-red-800'}`}>₹{Math.abs(todaysEarnings.profit).toFixed(2)}</p>
-                    <p className={`text-xs ${todaysEarnings.profit >= 0 ? 'text-green-500' : 'text-red-500'} mt-1`}>
-                      {todaysEarnings.profit >= 0 ? 'Profit' : 'Loss'}
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="mt-6">
-                  <h4 className="font-medium mb-3">Payment Method Breakdown</h4>
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Payment Method</TableHead>
-                          <TableHead className="text-right">Sales</TableHead>
-                          <TableHead className="text-right">Revenue</TableHead>
-                          <TableHead className="text-right">Refunds</TableHead>
-                          <TableHead className="text-right">Refund Amount</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {Object.entries(todaysEarnings.paymentMethodBreakdown)
-                          .filter(([_, data]) => data.revenue > 0 || data.refundAmount > 0)
-                          .map(([method, data]) => (
-                            <TableRow key={method}>
-                              <TableCell className="font-medium">
-                                {method.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                              </TableCell>
-                              <TableCell className="text-right">{data.count}</TableCell>
-                              <TableCell className="text-right text-green-600 font-semibold">
-                                ₹{data.revenue.toFixed(2)}
-                              </TableCell>
-                              <TableCell className="text-right">{data.refunds}</TableCell>
-                              <TableCell className="text-right text-red-600 font-semibold">
-                                ₹{data.refundAmount.toFixed(2)}
-                              </TableCell>
+                ) : apiTodaysEarnings ? (
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                        <p className="text-sm text-blue-600 font-medium">Total Revenue</p>
+                        <p className="text-2xl font-bold text-blue-800">₹{(apiTodaysEarnings as any).revenue.toFixed(2)}</p>
+                        <p className="text-xs text-blue-500 mt-1">from {(apiTodaysEarnings as any).orderCount} orders</p>
+                      </div>
+                      <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                        <p className="text-sm text-red-600 font-medium">Refunds</p>
+                        <p className="text-2xl font-bold text-red-800">₹{(apiTodaysEarnings as any).refundAmount.toFixed(2)}</p>
+                        <p className="text-xs text-red-500 mt-1">from {(apiTodaysEarnings as any).returnCount} returns</p>
+                      </div>
+                      <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+                        <p className="text-sm text-orange-600 font-medium">Cost</p>
+                        <p className="text-2xl font-bold text-orange-800">₹{(apiTodaysEarnings as any).cost.toFixed(2)}</p>
+                      </div>
+                      <div className={`${(apiTodaysEarnings as any).profit >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} p-4 rounded-lg border`}>
+                        <p className={`text-sm font-medium ${(apiTodaysEarnings as any).profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>Net Profit/Loss</p>
+                        <p className={`text-2xl font-bold ${(apiTodaysEarnings as any).profit >= 0 ? 'text-green-800' : 'text-red-800'}`}>₹{Math.abs((apiTodaysEarnings as any).profit).toFixed(2)}</p>
+                        <p className={`text-xs ${(apiTodaysEarnings as any).profit >= 0 ? 'text-green-500' : 'text-red-500'} mt-1`}>
+                          {(apiTodaysEarnings as any).profit >= 0 ? 'Profit' : 'Loss'}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-6">
+                      <h4 className="font-medium mb-3">Payment Method Breakdown</h4>
+                      <div className="rounded-md border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Payment Method</TableHead>
+                              <TableHead className="text-right">Sales</TableHead>
+                              <TableHead className="text-right">Revenue</TableHead>
+                              <TableHead className="text-right">Refunds</TableHead>
+                              <TableHead className="text-right">Refund Amount</TableHead>
                             </TableRow>
-                          ))
-                        }
-                        {Object.entries(todaysEarnings.paymentMethodBreakdown).filter(([_, data]) => data.revenue > 0 || data.refundAmount > 0).length === 0 && (
-                          <TableRow>
-                            <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">
-                              No payment data for today
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
+                          </TableHeader>
+                          <TableBody>
+                            {Object.entries((apiTodaysEarnings as any).paymentMethodBreakdown)
+                              .filter(([_, data]: [string, any]) => data.revenue > 0 || data.refundAmount > 0)
+                              .map(([method, data]: [string, any]) => (
+                                <TableRow key={method}>
+                                  <TableCell className="font-medium">
+                                    {method.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                  </TableCell>
+                                  <TableCell className="text-right">{data.count}</TableCell>
+                                  <TableCell className="text-right text-green-600 font-semibold">
+                                    ₹{data.revenue.toFixed(2)}
+                                  </TableCell>
+                                  <TableCell className="text-right">{data.refunds}</TableCell>
+                                  <TableCell className="text-right text-red-600 font-semibold">
+                                    ₹{data.refundAmount.toFixed(2)}
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            }
+                            {Object.entries((apiTodaysEarnings as any).paymentMethodBreakdown).filter(([_, data]: [string, any]) => data.revenue > 0 || data.refundAmount > 0).length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">
+                                  No payment data for today
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
               </CardContent>
             </Card>
           )}
