@@ -813,7 +813,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Prepare WhatsApp message in requested format
       const phoneNumberClean = phoneNumber.replace(/[^0-9]/g, '');
-      const formattedTotal = parseFloat(order.totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+      const formattedTotal = Math.floor(parseFloat(order.totalAmount.toString())).toLocaleString('en-IN');
       const whatsappMessage = `Hello ${order.customerName},
 
 Thanks for visiting Fabrix and shopping with us! 👕😊

@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "a03e5b85-120e-4b65-9d74-fd751b0eaa54",
+  "id": "35c6f584-957c-47c5-bac4-0d311267a405",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "accounts": {
@@ -408,14 +408,14 @@
         },
         "discount_amount": {
           "name": "discount_amount",
-          "type": "decimal(10,2)",
+          "type": "int",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
         "total_amount": {
           "name": "total_amount",
-          "type": "decimal(10,2)",
+          "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false

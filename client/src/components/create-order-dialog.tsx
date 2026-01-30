@@ -291,9 +291,9 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
     const orderData = {
       ...data,
       subTotal: subTotal.toFixed(2),
-      discountAmount: discountAmount.toFixed(2),
+      discountAmount: Math.floor(discountAmount).toString(),
       discountPercentage: discountPercentage.toFixed(2),
-      totalAmount: finalTotal.toFixed(2),
+      totalAmount: Math.floor(finalTotal).toString(),
       items: orderItems,
     };
     

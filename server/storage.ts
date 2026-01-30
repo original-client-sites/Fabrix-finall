@@ -279,17 +279,19 @@ export class DatabaseStorage implements IStorage {
       finalTotal = subtotal;
     }
     
-    // Ensure finalTotal is not negative
+    // Ensure finalTotal is not negative and convert to integer
     finalTotal = Math.max(0, finalTotal);
-
+    const finalTotalInt = Math.floor(finalTotal);
+    const discountAmountInt = Math.floor(discountAmount);
+    
     await db.insert(orders).values({
       ...orderData,
       id,
       orderNumber,
       subTotal: subtotal.toFixed(2),
-      discountAmount: discountAmount.toFixed(2),
+      discountAmount: discountAmountInt,
       discountPercentage: discountPercentage.toFixed(2),
-      totalAmount: finalTotal.toFixed(2),
+      totalAmount: finalTotalInt,
     });
 
     const orderResult = await db.select().from(orders).where(eq(orders.id, id));
@@ -338,8 +340,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateOrder(id: string, insertOrder: InsertOrder): Promise<Order | undefined> {
+    // Transform integer values before updating
+    const updatedOrder = {
+      ...insertOrder,
+      totalAmount: insertOrder.totalAmount ? Math.floor(parseFloat(insertOrder.totalAmount.toString())) : undefined,
+      discountAmount: insertOrder.discountAmount ? Math.floor(parseFloat(insertOrder.discountAmount.toString())) : undefined,
+    };
+    
     await db.update(orders)
-      .set(insertOrder)
+      .set(updatedOrder)
       .where(eq(orders.id, id));
 
     const result = await db.select().from(orders).where(eq(orders.id, id));

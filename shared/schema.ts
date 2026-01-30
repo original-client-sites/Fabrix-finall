@@ -72,8 +72,8 @@ export const orders = pgTable("orders", {
   notes: text("notes"),
   subTotal: numeric("sub_total", { precision: 10, scale: 2 }),
   discountPercentage: numeric("discount_percentage", { precision: 5, scale: 2 }),
-  discountAmount: numeric("discount_amount", { precision: 10, scale: 2 }),
-  totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).notNull(),
+  discountAmount: integer("discount_amount"),
+  totalAmount: integer("total_amount").notNull(),
   date: timestamp("date").default(sql`CURRENT_TIMESTAMP`),  // Changed column name to "date" but property stays as "createdAt"
 });
 

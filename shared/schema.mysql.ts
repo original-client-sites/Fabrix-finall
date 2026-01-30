@@ -72,8 +72,8 @@ export const orders = mysqlTable("orders", {
   notes: text("notes"),
   subTotal: decimal("sub_total", { precision: 10, scale: 2 }),
   discountPercentage: decimal("discount_percentage", { precision: 5, scale: 2 }),
-  discountAmount: decimal("discount_amount", { precision: 10, scale: 2 }),
-  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  discountAmount: int("discount_amount"),
+  totalAmount: int("total_amount").notNull(),
   date: timestamp("date").default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -98,10 +98,17 @@ export const insertOrderSchema = createInsertSchema(orders, {
     if (isNaN(num) || num < 0) {
       throw new Error("Discount amount must be a positive number");
     }
-    // Truncate decimal portion (convert paise to rupees)
+    // Convert to integer (truncate decimal portion)
     return Math.floor(num).toString();
   }).nullable(),
-  totalAmount: z.string().min(1, "Total amount is required"),
+  totalAmount: z.string().min(1, "Total amount is required").transform(val => {
+    const num = parseFloat(val);
+    if (isNaN(num) || num < 0) {
+      throw new Error("Total amount must be a positive number");
+    }
+    // Convert to integer (truncate decimal portion)
+    return Math.floor(num).toString();
+  }),
 }).omit({ id: true, date: true, orderNumber: true });
 
 export type InsertOrder = z.infer<typeof insertOrderSchema>;

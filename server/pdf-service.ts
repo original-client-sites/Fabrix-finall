@@ -325,7 +325,7 @@ export class PDFService {
           
           doc.fontSize(14).font('Helvetica-Bold');
           doc.text('TOTAL AFTER DISCOUNT:', 320, yPosition);
-          doc.text(`inr ${parseFloat(order.totalAmount.toString()).toFixed(2)}`, 480, yPosition, { align: 'right' });
+          doc.text(`inr ${Math.floor(parseFloat(order.totalAmount.toString()))}`, 480, yPosition, { align: 'right' });
           
           // Reset font back to normal for subsequent text
           doc.fontSize(10).font('Helvetica');
@@ -335,7 +335,7 @@ export class PDFService {
           yPosition += 15;
           doc.fontSize(14).font('Helvetica-Bold');
           doc.text('GRAND TOTAL:', 320, yPosition);
-          doc.text(`inr ${parseFloat(order.totalAmount.toString()).toFixed(2)}`, 480, yPosition, { align: 'right' });
+          doc.text(`inr ${Math.floor(parseFloat(order.totalAmount.toString()))}`, 480, yPosition, { align: 'right' });
         }
 
         // Amount in words (optional - you can implement this)

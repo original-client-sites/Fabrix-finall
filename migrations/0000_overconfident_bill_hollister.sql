@@ -59,8 +59,8 @@ CREATE TABLE `orders` (
 	`notes` text,
 	`sub_total` decimal(10,2),
 	`discount_percentage` decimal(5,2),
-	`discount_amount` decimal(10,2),
-	`total_amount` decimal(10,2) NOT NULL,
+	`discount_amount` int,
+	`total_amount` int NOT NULL,
 	`date` timestamp DEFAULT CURRENT_TIMESTAMP,
 	CONSTRAINT `orders_id` PRIMARY KEY(`id`)
 );
