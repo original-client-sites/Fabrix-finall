@@ -470,19 +470,19 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                         {...form.register("discountPercentage", {
                           onChange: (e) => {
                             let value = e.target.value;
-                            // Round to nearest integer and show user the rounded value
+                            // Truncate decimal portion (convert paise to rupees) and show user the truncated value
                             if (value) {
                               const numValue = parseFloat(value);
                               if (!isNaN(numValue)) {
-                                const roundedValue = Math.round(numValue).toString();
-                                if (roundedValue !== value) {
-                                  e.target.value = roundedValue;
-                                  value = roundedValue;
-                                  // Show toast to inform user of auto-rounding
-                                  if (numValue !== Math.round(numValue)) {
+                                const truncatedValue = Math.floor(numValue).toString();
+                                if (truncatedValue !== value) {
+                                  e.target.value = truncatedValue;
+                                  value = truncatedValue;
+                                  // Show toast to inform user of auto-truncation
+                                  if (numValue !== Math.floor(numValue)) {
                                     toast({
-                                      title: "Auto-Rounded",
-                                      description: `Discount percentage rounded from ${numValue} to ${roundedValue}`,
+                                      title: "Decimal Truncated",
+                                      description: `Discount percentage ${numValue} truncated to ${truncatedValue} (paise removed)`
                                     });
                                   }
                                 }
@@ -514,19 +514,19 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                         {...form.register("discountAmount", {
                           onChange: (e) => {
                             let value = e.target.value;
-                            // Round to nearest integer and show user the rounded value
+                            // Truncate decimal portion (convert paise to rupees) and show user the truncated value
                             if (value) {
                               const numValue = parseFloat(value);
                               if (!isNaN(numValue)) {
-                                const roundedValue = Math.round(numValue).toString();
-                                if (roundedValue !== value) {
-                                  e.target.value = roundedValue;
-                                  value = roundedValue;
-                                  // Show toast to inform user of auto-rounding
-                                  if (numValue !== Math.round(numValue)) {
+                                const truncatedValue = Math.floor(numValue).toString();
+                                if (truncatedValue !== value) {
+                                  e.target.value = truncatedValue;
+                                  value = truncatedValue;
+                                  // Show toast to inform user of auto-truncation
+                                  if (numValue !== Math.floor(numValue)) {
                                     toast({
-                                      title: "Auto-Rounded",
-                                      description: `Discount amount rounded from ₹${numValue.toFixed(2)} to ₹${roundedValue}`,
+                                      title: "Decimal Truncated",
+                                      description: `Discount amount ₹${numValue.toFixed(2)} truncated to ₹${truncatedValue} (paise removed)`
                                     });
                                   }
                                 }

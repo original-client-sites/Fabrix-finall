@@ -811,12 +811,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         mimeType: 'application/pdf'
       };
       
-      // Prepare WhatsApp message with download link
+      // Prepare WhatsApp message in requested format
       const phoneNumberClean = phoneNumber.replace(/[^0-9]/g, '');
-      const whatsappMessage = `${message}
+      const formattedTotal = parseFloat(order.totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+      const whatsappMessage = `Hello ${order.customerName},
 
-📎 Please find your invoice attached to this chat.
-📁 Invoice will be automatically available for download.`;
+Thanks for visiting Fabrix and shopping with us! 👕😊
+
+Your invoice for order #${order.orderNumber} is attached here.
+Total: ₹${formattedTotal}
+
+📍 SUPER MALL-2, FF/152, Infocity, Gandhinagar, Gujarat 382007
+
+Thanks again for your purchase—hope to see you again soon! 🙌`;
       const encodedMessage = encodeURIComponent(whatsappMessage);
       
       // Use WhatsApp Web URL scheme with file attachment parameter

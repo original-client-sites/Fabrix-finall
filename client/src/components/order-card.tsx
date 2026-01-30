@@ -310,14 +310,17 @@ export function OrderCard({ order }: OrderCardProps) {
             size="sm"
             onClick={async () => {
               try {
-                // Prepare WhatsApp message
+                // Prepare WhatsApp message in requested format
                 const message = `Hello ${order.customerName},
 
-Please find the invoice for your order #${order.orderNumber}.
+Thanks for visiting Fabrix and shopping with us! 👕😊
 
-Total Amount: ₹${order.totalAmount}
+Your invoice for order #${order.orderNumber} is attached here.
+Total: ₹${parseFloat(order.totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
 
-Thank you for your purchase!`;
+📍 SUPER MALL-2, FF/152, Infocity, Gandhinagar, Gujarat 382007
+
+Thanks again for your purchase—hope to see you again soon! 🙌`;
                 
                 const formData = new FormData();
                 formData.append('phoneNumber', order.customerPhone!.replace(/[^0-9]/g, ''));

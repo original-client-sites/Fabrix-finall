@@ -89,8 +89,8 @@ export const insertOrderSchema = createInsertSchema(orders, {
     if (isNaN(num) || num < 0 || num > 100) {
       throw new Error("Discount percentage must be a number between 0 and 100");
     }
-    // Round to nearest integer instead of throwing error
-    return Math.round(num).toString();
+    // Truncate decimal portion (convert paise to rupees)
+    return Math.floor(num).toString();
   }).nullable(),
   discountAmount: z.string().optional().transform(val => {
     if (val === "" || val === null || val === undefined) return null;
@@ -98,8 +98,8 @@ export const insertOrderSchema = createInsertSchema(orders, {
     if (isNaN(num) || num < 0) {
       throw new Error("Discount amount must be a positive number");
     }
-    // Round to nearest integer instead of throwing error
-    return Math.round(num).toString();
+    // Truncate decimal portion (convert paise to rupees)
+    return Math.floor(num).toString();
   }).nullable(),
   totalAmount: z.string().min(1, "Total amount is required"),
 }).omit({ id: true, date: true, orderNumber: true });
