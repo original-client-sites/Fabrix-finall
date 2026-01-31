@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "c9976100-3a13-4989-8bbf-2500425d5a25",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "eea17d99-04a0-4ffe-a843-293d916d127b",
+  "prevId": "c9976100-3a13-4989-8bbf-2500425d5a25",
   "tables": {
     "accounts": {
       "name": "accounts",
@@ -201,16 +201,16 @@
           "notNull": true,
           "autoincrement": false
         },
-        "customer_email": {
-          "name": "customer_email",
-          "type": "varchar(150)",
+        "customer_name": {
+          "name": "customer_name",
+          "type": "varchar(100)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "customer_name": {
-          "name": "customer_name",
-          "type": "varchar(100)",
+        "customer_email": {
+          "name": "customer_email",
+          "type": "varchar(150)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

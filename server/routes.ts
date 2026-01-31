@@ -21,6 +21,7 @@ import {
   insertStockMovementSchema,
   insertDiscountCodeSchema,
   insertPaymentDetailSchema,
+  type DiscountCode,
 } from "@shared/schema.mysql";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
@@ -498,52 +499,105 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (creditAmount > 0 && returnData.orderNumber) {
-        const code = `CREDIT-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-        const expiresAt = new Date();
-        expiresAt.setFullYear(expiresAt.getFullYear() + 1); // 1 year expiry
-
-        console.log('Creating discount code for store credit:', {
-          code,
-          amount: creditAmount.toFixed(2),
+        console.log('Processing store credit for return:', {
+          creditAmount: creditAmount.toFixed(2),
           email: returnData.customerEmail,
           customerName: returnData.customerName,
           customerPhone: returnData.customerPhone,
-          creditAmountType: typeof creditAmount,
-          creditAmountValue: creditAmount
         });
 
         try {
-          const discountCode = await storage.createDiscountCode({
-            code,
-            customerEmail: returnData.customerEmail || '',
-            customerName: returnData.customerName || '',
-            customerPhone: returnData.customerPhone || '',
-            amount: creditAmount.toFixed(2),
-            expiresAt,
+          // First, check if there are existing discount codes for this customer that can be updated
+          const existingCodes = await storage.getDiscountCodes(returnData.customerName || '');
+          
+          // Filter to active codes (not expired and not fully used)
+          const activeCodes = existingCodes.filter(code => {
+            const now = new Date();
+            const expiresAt = code.expiresAt ? new Date(code.expiresAt) : null;
+            const isExpired = expiresAt && expiresAt < now;
+            const isFullyUsed = parseFloat(code.amount) <= 0.01; // Consider as fully used if amount is very small
+            return !isExpired && !isFullyUsed;
           });
+          
+          let remainingCreditAmount = creditAmount;
+          
+          // Update the first existing code if possible, otherwise create a new one
+          // If there are existing codes, add the new credit to the first one
+          if (activeCodes.length > 0) {
+            const codeToUpdate = activeCodes[0]; // Take the first active code
+            const currentAmount = parseFloat(codeToUpdate.amount);
+            const newAmount = currentAmount + remainingCreditAmount;
+            
+            // Update the existing code with the new amount
+            await db.update(discountCodes)
+              .set({ amount: newAmount.toFixed(2) })
+              .where(eq(discountCodes.id, codeToUpdate.id));
+              
+            console.log('Updated existing discount code:', {
+              id: codeToUpdate.id,
+              code: codeToUpdate.code,
+              oldAmount: codeToUpdate.amount,
+              newAmount: newAmount.toFixed(2)
+            });
+            
+            remainingCreditAmount = 0; // All credit has been added to existing code
+          }
+          
+          // If there's still remaining credit amount, create a new discount code
+          if (remainingCreditAmount > 0) {
+            const code = `CREDIT-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+            const expiresAt = new Date();
+            expiresAt.setFullYear(expiresAt.getFullYear() + 1); // 1 year expiry
 
-          console.log('Discount code created successfully:', {
-            id: discountCode.id,
-            code: discountCode.code,
-            amount: discountCode.amount
-          });
+            console.log('Creating new discount code for remaining store credit:', {
+              code,
+              amount: remainingCreditAmount.toFixed(2),
+              email: returnData.customerEmail,
+              customerName: returnData.customerName,
+              customerPhone: returnData.customerPhone,
+            });
+
+            const discountCode = await storage.createDiscountCode({
+              code,
+              customerEmail: returnData.customerEmail || '',
+              customerName: returnData.customerName || '',
+              customerPhone: returnData.customerPhone || '',
+              amount: remainingCreditAmount.toFixed(2),
+              expiresAt,
+            });
+
+            console.log('New discount code created successfully:', {
+              id: discountCode.id,
+              code: discountCode.code,
+              amount: discountCode.amount
+            });
+          } else {
+            console.log('All store credit added to existing codes, no new code needed');
+          }
 
           // Send email notification if email is provided
           if (returnData.customerEmail && returnData.customerEmail !== '') {
             try {
+              // Calculate total available credit for the customer after this update
+              const updatedCodes = await storage.getDiscountCodes(returnData.customerName || '');
+              const totalAvailableCredit = updatedCodes.reduce((sum, code) => sum + parseFloat(code.amount), 0);
+              
+              const expiresAt = new Date();
+              expiresAt.setFullYear(expiresAt.getFullYear() + 1); // Use same expiry for email
+              
               await emailService.sendDiscountCode(
                 returnData.customerEmail,
-                code,
-                creditAmount.toFixed(2),
+                'Store Credit Update',
+                totalAvailableCredit.toFixed(2),
                 expiresAt
               );
               console.log('Email notification sent successfully');
             } catch (emailError) {
-            console.error('Failed to send discount code email:', emailError);
+              console.error('Failed to send discount code email:', emailError);
+            }
           }
-        }
         } catch (discountError: any) {
-          console.error('Failed to create discount code:', discountError);
+          console.error('Failed to process discount code:', discountError);
           console.error('Discount code error details:', {
             message: discountError.message,
             stack: discountError.stack,
@@ -552,7 +606,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
           // Send error response to frontend
           return res.status(500).json({ 
-            message: 'Return created successfully, but failed to create store credit', 
+            message: 'Return created successfully, but failed to process store credit', 
             error: discountError.message,
             returnId: newReturn.id
           });
@@ -602,8 +656,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Discount code routes
   app.get("/api/discount-codes", async (req, res) => {
     try {
-      const customerEmail = req.query.customerEmail as string | undefined;
-      const codes = await storage.getDiscountCodes(customerEmail);
+      const customerIdentifier = req.query.customer as string | undefined;
+      let codes: DiscountCode[] = [];
+      
+      if (customerIdentifier) {
+        codes = await storage.getDiscountCodes(customerIdentifier);
+      } else {
+        codes = await storage.getAllDiscountCodes();
+      }
+      
       res.json(codes);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch discount codes" });

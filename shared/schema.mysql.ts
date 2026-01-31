@@ -286,8 +286,8 @@ export const discountCodes = mysqlTable("discount_codes", {
 
 export const insertDiscountCodeSchema = createInsertSchema(discountCodes, {
   code: z.string().min(1, "Code is required"),
+  customerName: z.string().min(1, "Customer name is required"),
   customerEmail: z.string().email("Valid email is required").optional().or(z.literal("")),
-  customerName: z.string().optional(),
   customerPhone: z.string().optional(),
   amount: z.string().min(1, "Amount is required").transform(val => {
     const num = parseFloat(val);

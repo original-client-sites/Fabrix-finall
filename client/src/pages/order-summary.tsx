@@ -60,33 +60,64 @@ export default function OrderSummary() {
     return returns.filter((ret) => ret.orderId === orderId);
   };
   
-  // Function to get discount codes for a customer
-  const getCustomerDiscountCodes = (customerEmail: string) => {
-    return discountCodes.filter((code: DiscountCode) => code.customerEmail === customerEmail && !code.isUsed);
+  // Function to get all discount codes for a customer
+  const getCustomerDiscountCodes = (customerName: string) => {
+    return discountCodes.filter((code: DiscountCode) => code.customerName === customerName);
   };
   
-  // Function to calculate remaining store credit for a customer
-  const getRemainingStoreCredit = (customerEmail: string) => {
-    const codes = getCustomerDiscountCodes(customerEmail);
-    return codes.reduce((total: number, code: DiscountCode) => total + parseFloat(code.amount), 0);
+  // Function to calculate remaining store credit for a customer - fetched directly from discount codes table
+  const getRemainingStoreCredit = (customerName: string) => {
+    const codes = getCustomerDiscountCodes(customerName);
+    return codes.reduce((total: number, code: DiscountCode) => {
+      // Sum up all remaining amounts in the discount codes
+      return total + parseFloat(code.amount);
+    }, 0);
+  };
+  
+  // Function to get total store credit issued to a customer
+  const getTotalStoreCreditIssued = (customerName: string) => {
+    // This would need to track original issued amounts, but since that's not available,
+    // we'll use a different approach based on historical records
+    const codes = getCustomerDiscountCodes(customerName);
+    
+    // For now, calculate based on store credit payments in orders
+    let totalIssued = 0;
+    orders.forEach(order => {
+      if (order.customerName === customerName) {
+        // Check if this order created returns with store credit
+        const orderReturns = getReturnsForOrder(order.id);
+        orderReturns.forEach(ret => {
+          if (ret.creditAmount) {
+            totalIssued += parseFloat(ret.creditAmount);
+          }
+        });
+      }
+    });
+    
+    return totalIssued;
+  };
+  
+  // Function to get used store credit for a customer - fetched directly from discount codes table
+  const getUsedStoreCreditForCustomer = (customerName: string) => {
+    // Total issued minus remaining equals used
+    const totalIssued = getTotalStoreCreditIssued(customerName);
+    const remaining = getRemainingStoreCredit(customerName);
+    return Math.max(0, totalIssued - remaining); // Prevent negative values
   };
   
   // Function to get used store credit for an order
   const getUsedStoreCreditForOrder = (order: OrderWithItems) => {
-    // Check if this order was used to create a return that had credit amount
-    const orderReturns = getReturnsForOrder(order.id);
-    const totalCreditAmount = orderReturns.reduce((total, ret) => {
-      return total + (parseFloat(ret.creditAmount || '0'));
-    }, 0);
-    
-    // Also check if the order itself used a discount code (store credit)
+    // Check if the order itself used a discount code (store credit)
     let discountCodeAmount = 0;
     if (order.payments) {
       const storeCreditPayments = order.payments.filter(p => p.paymentMethod === 'store_credit');
       discountCodeAmount = storeCreditPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
     }
     
-    return { creditFromReturns: totalCreditAmount, discountCodeAmount, totalUsed: totalCreditAmount + discountCodeAmount };
+    // For the customer's total used store credit, we'll calculate from the discount codes table
+    const totalUsedByCustomer = getUsedStoreCreditForCustomer(order.customerName || '');
+    
+    return { creditFromReturns: 0, discountCodeAmount, totalUsed: totalUsedByCustomer };
   };
   
   // Function to get returned items for an order
@@ -454,8 +485,8 @@ export default function OrderSummary() {
     ];
     
     filteredOrders.forEach(order => {
-      const remainingStoreCredit = getRemainingStoreCredit(order.customerEmail || '');
-      const usedStoreCredit = getUsedStoreCreditForOrder(order);
+      const remainingStoreCredit = getRemainingStoreCredit(order.customerName || '');
+      const usedStoreCredit = { discountCodeAmount: 0, totalUsed: getUsedStoreCreditForCustomer(order.customerName || '') };
       const returnedItems = getReturnedItemsForOrder(order.id);
       const exchangedItems = getExchangedItemsForOrder(order.id);
       
@@ -875,8 +906,8 @@ export default function OrderSummary() {
                   </thead>
                   <tbody className="divide-y divide-border">
                     {filteredOrders.map((order, orderIndex) => {
-                      const remainingStoreCredit = getRemainingStoreCredit(order.customerEmail || '');
-                      const usedStoreCredit = getUsedStoreCreditForOrder(order);
+                      const remainingStoreCredit = getRemainingStoreCredit(order.customerName || '');
+                      const usedStoreCredit = { discountCodeAmount: 0, totalUsed: getUsedStoreCreditForCustomer(order.customerName || '') };
                       const returnedItems = getReturnedItemsForOrder(order.id);
                       const exchangedItems = getExchangedItemsForOrder(order.id);
                       

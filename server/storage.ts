@@ -71,7 +71,9 @@ export interface IStorage {
   updateReturn(id: string, data: Partial<InsertReturn>): Promise<Return | null>;
 
   // Discount Codes
-  getDiscountCodes(customerEmail?: string): Promise<DiscountCode[]>;
+  getDiscountCodesByEmail(customerEmail: string): Promise<DiscountCode[]>;
+  getDiscountCodesByName(customerName: string): Promise<DiscountCode[]>;
+  getAllDiscountCodes(): Promise<DiscountCode[]>;
   getDiscountCode(code: string): Promise<DiscountCode | null>;
   createDiscountCode(data: InsertDiscountCode): Promise<DiscountCode>;
   useDiscountCode(code: string, amountUsed: string): Promise<{ updated: DiscountCode | null; wasDeleted: boolean; wasFound: boolean; error?: string }>;
@@ -678,13 +680,39 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Discount codes
-  async getDiscountCodes(customerEmail?: string): Promise<DiscountCode[]> {
-    if (customerEmail) {
-      return await db.select().from(discountCodes).where(eq(discountCodes.customerEmail, customerEmail));
+  async getDiscountCodesByEmail(customerEmail: string): Promise<DiscountCode[]> {
+    return await db.select().from(discountCodes).where(eq(discountCodes.customerEmail, customerEmail));
+  }
+  
+  async getDiscountCodesByName(customerName: string): Promise<DiscountCode[]> {
+    return await db.select().from(discountCodes).where(eq(discountCodes.customerName, customerName));
+  }
+  
+  async getAllDiscountCodes(): Promise<DiscountCode[]> {
+    return await db.select().from(discountCodes);
+  }
+  
+  // Enhanced method that tries both email and name matching
+  async getDiscountCodes(customerIdentifier: string): Promise<DiscountCode[]> {
+    // First try exact email match
+    const emailMatches = await this.getDiscountCodesByEmail(customerIdentifier);
+    if (emailMatches.length > 0) {
+      return emailMatches;
     }
     
-    // For all codes, return them directly
-    return await db.select().from(discountCodes);
+    // If no email matches, try name match
+    const nameMatches = await this.getDiscountCodesByName(customerIdentifier);
+    if (nameMatches.length > 0) {
+      return nameMatches;
+    }
+    
+    // If still no matches, try to find by email in orders table
+    const ordersResult = await db.select().from(orders).where(eq(orders.customerEmail, customerIdentifier)).limit(1);
+    if (ordersResult.length > 0) {
+      return await this.getDiscountCodesByName(ordersResult[0].customerName);
+    }
+    
+    return [];
   }
 
   async getDiscountCode(code: string): Promise<DiscountCode | null> {
@@ -708,11 +736,15 @@ export class DatabaseStorage implements IStorage {
     });
 
     await db.insert(discountCodes).values({
-      ...data,
       id,
+      code: data.code,
+      customerEmail: data.customerEmail!,
+      customerName: data.customerName || '',
+      customerPhone: data.customerPhone || '',
       amount,
       isUsed: false,
       usedAt: null,
+      expiresAt: data.expiresAt || null,
     });
 
     const discountCodeResult = await db.select().from(discountCodes).where(eq(discountCodes.id, id));
