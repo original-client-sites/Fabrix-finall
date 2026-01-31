@@ -911,132 +911,122 @@ export default function OrderSummary() {
                       const returnedItems = getReturnedItemsForOrder(order.id);
                       const exchangedItems = getExchangedItemsForOrder(order.id);
                       
+                      // Calculate order totals
+                      const orderTotal = parseFloat(String(order.totalAmount)) || 0;
+                      const discountAmount = parseFloat(String(order.discountAmount || '0'));
+                      
+                      // Process payment methods for the entire order
+                      let cash = 0, creditCard = 0, debitCash = 0, upi = 0;
+                      
+                      if (order.paymentMethod === 'mixed' && order.payments && order.payments.length > 0) {
+                        // For mixed payments, sum up all payment methods
+                        order.payments.forEach(payment => {
+                          const amount = Math.round(parseFloat(payment.amount) || 0);
+                          switch (payment.paymentMethod) {
+                            case 'cash': cash += amount; break;
+                            case 'credit_card': creditCard += amount; break;
+                            case 'debit_card': debitCash += amount; break;
+                            case 'upi': upi += amount; break;
+                            case 'bank_transfer': upi += amount; break;
+                            case 'store_credit': cash += amount; break;
+                          }
+                        });
+                      } else {
+                        // For single payment method
+                        const amount = Math.round(orderTotal);
+                        switch (order.paymentMethod) {
+                          case 'cash': cash = amount; break;
+                          case 'credit_card': creditCard = amount; break;
+                          case 'debit_card': debitCash = amount; break;
+                          case 'upi': upi = amount; break;
+                          case 'bank_transfer': upi = amount; break;
+                          case 'store_credit': cash = amount; break;
+                          default: cash = amount; break;
+                        }
+                      }
+                      
+                      // Calculate payment total (sum of all payment methods)
+                      const paymentTotal = cash + creditCard + debitCash + upi;
+                      
                       return (
                         <tr key={`${order.id}-${orderIndex}`} className="hover:bg-muted/30 transition-colors">
-                          <td className="p-4 align-middle whitespace-nowrap" rowSpan={order.items.length}>
+                          <td className="p-4 align-middle whitespace-nowrap">
                             <div className="font-medium font-mono">#{order.orderNumber}</div>
                           </td>
-                          <td className="p-4 align-middle whitespace-nowrap" rowSpan={order.items.length}>
+                          <td className="p-4 align-middle whitespace-nowrap">
                             <div className="font-medium">{order.customerName}</div>
                             {order.customerEmail && (
                               <div className="text-sm text-muted-foreground truncate max-w-32">{order.customerEmail}</div>
                             )}
                           </td>
-                          <td className="p-4 align-middle whitespace-nowrap" rowSpan={order.items.length}>
+                          <td className="p-4 align-middle whitespace-nowrap">
                             {order.customerPhone ? (
                               <div className="font-medium">{order.customerPhone}</div>
                             ) : (
                               <div className="text-sm text-muted-foreground">N/A</div>
                             )}
                           </td>
-                          <td className="p-4 align-middle whitespace-nowrap" rowSpan={order.items.length}>
+                          <td className="p-4 align-middle whitespace-nowrap">
                             <div className="text-sm">
                               {order.date
                                 ? new Date(order.date instanceof Date ? order.date : new Date(order.date)).toISOString().split('T')[0]
                                 : 'N/A'}
                             </div>
                           </td>
-                          {order.items.map((item, itemIndex) => {
-                            const itemCategory = getProductCategoryByName(item.productName);
-                            const itemSubtotal = parseFloat(item.subtotal) || 0;
-                            const paymentData = processPaymentMethods(order, itemSubtotal);
-                            
-                            // Apply discount only to the item with the highest price
-                            let discountForThisItem = 0;
-                            const itemsWithPrices = order.items.map(i => ({
-                              item: i,
-                              price: parseFloat(i.subtotal) || 0
-                            })).sort((a, b) => b.price - a.price);
-                            
-                            // Apply discount to the highest priced item
-                            if (itemsWithPrices.length > 0 && itemsWithPrices[0].item.id === item.id) {
-                              discountForThisItem = parseFloat(String(order.discountAmount || '0'));
-                            }
-                            
-                            // Calculate payment total (sum of all payment methods PLUS discount amount)
-                            const basePaymentTotal = paymentData.cash + paymentData.creditCard + paymentData.debitCash + paymentData.upi;
-                            const paymentTotal = basePaymentTotal + discountForThisItem;
-                            const finalTotal = paymentTotal - discountForThisItem;
-                            
-                            // Only show category columns for the first item
-                            const categoryCells = itemIndex === 0 
-                              ? getAllCategories().map(category => (
-                                  <td key={`category-${category}`} className="p-4 align-middle whitespace-nowrap">
-                                    <div className="text-sm truncate max-w-20">
-                                      {getItemsForCategory(order, category)}
-                                    </div>
-                                  </td>
-                                ))
-                              : [];
-                            
-                            return (
-                              <>
-                                {itemIndex > 0 && (
-                                  <>
-                                    <td className="p-4 align-middle"></td>
-                                    <td className="p-4 align-middle"></td>
-                                    <td className="p-4 align-middle"></td>
-                                    <td className="p-4 align-middle"></td>
-                                    <td className="p-4 align-middle"></td>
-                                  </>
-                                )}
-                                <td className="p-4 align-middle max-w-xs">
-                                  <div className="font-medium truncate">{item.productName}</div>
-                                  <div className="text-sm text-muted-foreground truncate">SKU: {item.sku}</div>
-                                  <div className="text-sm">Qty: {item.quantity}</div>
-                                  {discountForThisItem > 0 && (
-                                    <div className="text-xs text-green-600 mt-1">
-                                      Discount applied: ₹{discountForThisItem.toFixed(2)}
-                                    </div>
-                                  )}
-                                </td>
-                                {categoryCells}
-                                <td className="p-4 align-middle whitespace-nowrap">
-                                  ₹{paymentData.cash.toFixed(2)}
-                                </td>
-                                <td className="p-4 align-middle whitespace-nowrap">
-                                  ₹{paymentData.creditCard.toFixed(2)}
-                                </td>
-                                <td className="p-4 align-middle whitespace-nowrap">
-                                  ₹{paymentData.debitCash.toFixed(2)}
-                                </td>
-                                <td className="p-4 align-middle whitespace-nowrap">
-                                  ₹{paymentData.upi.toFixed(2)}
-                                </td>
-                                <td className="p-4 align-middle whitespace-nowrap">
-                                  ₹{paymentTotal.toFixed(2)}
-                                </td>
-                                <td className="p-4 align-middle whitespace-nowrap">
-                                  ₹{discountForThisItem.toFixed(2)}
-                                </td>
-                                <td className="p-4 align-middle whitespace-nowrap" rowSpan={order.items.length}>
-                                  ₹{remainingStoreCredit.toFixed(2)}
-                                </td>
-                                <td className="p-4 align-middle whitespace-nowrap" rowSpan={order.items.length}>
-                                  ₹{usedStoreCredit.totalUsed.toFixed(2)}
-                                </td>
-                                <td className="p-4 align-middle max-w-xs" rowSpan={order.items.length}>
-                                  <div className="text-sm truncate">
-                                    {returnedItems.length > 0 
-                                      ? returnedItems.map(item => `${item.quantity}x ${item.productName}`).join(', ')
-                                      : 'None'}
-                                  </div>
-                                </td>
-                                <td className="p-4 align-middle max-w-xs" rowSpan={order.items.length}>
-                                  <div className="text-sm truncate">
-                                    {exchangedItems.length > 0
-                                      ? exchangedItems.map(item => `${item.quantity}x ${item.exchangeProductName || item.exchangeProductId}`).join(', ')
-                                      : 'None'}
-                                  </div>
-                                </td>
-                                <td className="p-4 align-middle font-medium whitespace-nowrap">
-                                  ₹{(paymentData.cash + paymentData.creditCard + paymentData.debitCash + paymentData.upi - discountForThisItem).toFixed(2)}
-                                </td>
-                              </>
-                            );
-                          })}
+                          
+                          {/* Category columns */}
+                          {getAllCategories().map(category => (
+                            <td key={`category-${category}`} className="p-4 align-middle whitespace-nowrap">
+                              <div className="text-sm truncate max-w-20">
+                                {getItemsForCategory(order, category)}
+                              </div>
+                            </td>
+                          ))}
+                          
+                          {/* Payment method columns */}
+                          <td className="p-4 align-middle whitespace-nowrap">
+                            ₹{cash.toFixed(2)}
+                          </td>
+                          <td className="p-4 align-middle whitespace-nowrap">
+                            ₹{creditCard.toFixed(2)}
+                          </td>
+                          <td className="p-4 align-middle whitespace-nowrap">
+                            ₹{debitCash.toFixed(2)}
+                          </td>
+                          <td className="p-4 align-middle whitespace-nowrap">
+                            ₹{upi.toFixed(2)}
+                          </td>
+                          <td className="p-4 align-middle whitespace-nowrap">
+                            ₹{paymentTotal.toFixed(2)}
+                          </td>
+                          <td className="p-4 align-middle whitespace-nowrap">
+                            ₹{discountAmount.toFixed(2)}
+                          </td>
+                          <td className="p-4 align-middle whitespace-nowrap">
+                            ₹{remainingStoreCredit.toFixed(2)}
+                          </td>
+                          <td className="p-4 align-middle whitespace-nowrap">
+                            ₹{usedStoreCredit.totalUsed.toFixed(2)}
+                          </td>
+                          <td className="p-4 align-middle max-w-xs">
+                            <div className="text-sm truncate">
+                              {returnedItems.length > 0 
+                                ? returnedItems.map(item => `${item.quantity}x ${item.productName}`).join(', ')
+                                : 'None'}
+                            </div>
+                          </td>
+                          <td className="p-4 align-middle max-w-xs">
+                            <div className="text-sm truncate">
+                              {exchangedItems.length > 0
+                                ? exchangedItems.map(item => `${item.quantity}x ${item.exchangeProductName || item.exchangeProductId}`).join(', ')
+                                : 'None'}
+                            </div>
+                          </td>
+                          <td className="p-4 align-middle font-medium whitespace-nowrap">
+                            ₹{orderTotal.toFixed(2)}
+                          </td>
                         </tr>
-                      )
+                      );
                     })}
                   </tbody>
                 </table>
