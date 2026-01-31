@@ -54,8 +54,8 @@ export default function StoreCredits() {
     const matchesSearch =
       code.customerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
       code.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ((code as any).customerName && (code as any).customerName.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      ((code as any).customerPhone && (code as any).customerPhone.toLowerCase().includes(searchQuery.toLowerCase()));
+      (code.customerName && code.customerName.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (code.customerPhone && code.customerPhone.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesSearch;
   });
 
@@ -146,13 +146,13 @@ export default function StoreCredits() {
                         {unusedCodes.map((code) => (
                           <TableRow key={code.id}>
                             <TableCell className="font-medium">
-                              {(code as any).customerName || '-'}
+                              {code.customerName || '-'}
                             </TableCell>
                             <TableCell>
                               {code.customerEmail}
                             </TableCell>
                             <TableCell>
-                              {(code as any).customerPhone || '-'}
+                              {code.customerPhone || '-'}
                             </TableCell>
                             <TableCell>
                               <code className="bg-muted px-2 py-1 rounded text-sm">
@@ -235,13 +235,13 @@ export default function StoreCredits() {
                         {usedCodes.map((code) => (
                           <TableRow key={code.id} className="opacity-60">
                             <TableCell className="font-medium">
-                              {(code as any).customerName || '-'}
+                              {code.customerName || '-'}
                             </TableCell>
                             <TableCell>
                               {code.customerEmail}
                             </TableCell>
                             <TableCell>
-                              {(code as any).customerPhone || '-'}
+                              {code.customerPhone || '-'}
                             </TableCell>
                             <TableCell>
                               <code className="bg-muted px-2 py-1 rounded text-sm line-through">

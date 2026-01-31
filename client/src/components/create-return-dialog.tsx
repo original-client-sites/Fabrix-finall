@@ -66,6 +66,7 @@ export function CreateReturnDialog({ open, onOpenChange, order }: CreateReturnDi
       orderNumber: "",
       customerName: "",
       customerEmail: "",
+      customerPhone: "",
       status: "pending",
       paymentMethod: "cash",
       reason: "",
@@ -81,6 +82,7 @@ export function CreateReturnDialog({ open, onOpenChange, order }: CreateReturnDi
       form.setValue("orderNumber", order.orderNumber);
       form.setValue("customerName", order.customerName);
       form.setValue("customerEmail", order.customerEmail || "");
+      form.setValue("customerPhone", order.customerPhone || "");
       setReturnItems(order.items.map(item => ({
         productId: item.productId,
         productName: item.productName,

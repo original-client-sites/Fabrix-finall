@@ -177,6 +177,7 @@ export const returns = mysqlTable("returns", {
   orderNumber: varchar("order_number", { length: 50 }).notNull(),
   customerName: varchar("customer_name", { length: 100 }).notNull(),
   customerEmail: varchar("customer_email", { length: 150 }),
+  customerPhone: varchar("customer_phone", { length: 20 }),
   status: varchar("status", { length: 50 }).default("pending").notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).default("cash").notNull(),
   reason: varchar("reason", { length: 255 }).notNull(),
@@ -191,6 +192,7 @@ export const returns = mysqlTable("returns", {
 export const insertReturnSchema = createInsertSchema(returns, {
   customerName: z.string().min(1, "Customer name is required"),
   customerEmail: z.string().email().optional().or(z.literal("")),
+  customerPhone: z.string().optional(),
   status: z.enum(["pending", "approved", "rejected", "completed"]),
   reason: z.string().min(1, "Return reason is required"),
   paymentMethod: z.enum(["cash", "credit_card", "debit_card", "upi", "bank_transfer", "store_credit", "mixed"]),
@@ -273,6 +275,8 @@ export const discountCodes = mysqlTable("discount_codes", {
   id: varchar("id", { length: 36 }).primaryKey(),
   code: varchar("code", { length: 50 }).notNull(),
   customerEmail: varchar("customer_email", { length: 150 }).notNull(),
+  customerName: varchar("customer_name", { length: 100 }),
+  customerPhone: varchar("customer_phone", { length: 20 }),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   isUsed: boolean("is_used").default(false),
   usedAt: timestamp("used_at"),
@@ -282,7 +286,9 @@ export const discountCodes = mysqlTable("discount_codes", {
 
 export const insertDiscountCodeSchema = createInsertSchema(discountCodes, {
   code: z.string().min(1, "Code is required"),
-  customerEmail: z.string().email("Valid email is required"),
+  customerEmail: z.string().email("Valid email is required").optional().or(z.literal("")),
+  customerName: z.string().optional(),
+  customerPhone: z.string().optional(),
   amount: z.string().min(1, "Amount is required").transform(val => {
     const num = parseFloat(val);
     if (isNaN(num) || num < 0) {

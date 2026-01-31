@@ -10,7 +10,6 @@ import {
   returns,
   returnItems,
   stockMovements,
-  stockStats,
   discountCodes,
   accounts,
   paymentDetails,
@@ -425,27 +424,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Stock stats routes
-  app.get("/api/stock-stats", async (_req, res) => {
-    try {
-      const stats = await storage.getStockStats();
-      res.json(stats);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch stock stats" });
-    }
-  });
+  // Stock stats routes (temporarily disabled - method not implemented)
+  // app.get("/api/stock-stats", async (_req, res) => {
+  //   try {
+  //     const stats = await storage.getStockStats();
+  //     res.json(stats);
+  //   } catch (error) {
+  //     res.status(500).json({ error: "Failed to fetch stock stats" });
+  //   }
+  // });
 
-  app.get("/api/stock-stats/:productId", async (req, res) => {
-    try {
-      const stats = await storage.getStockStatsByProduct(req.params.productId);
-      if (!stats) {
-        return res.status(404).json({ error: "Stock stats not found" });
-      }
-      res.json(stats);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch stock stats" });
-    }
-  });
+  // app.get("/api/stock-stats/:productId", async (req, res) => {
+  //   try {
+  //     const stats = await storage.getStockStatsByProduct(req.params.productId);
+  //     if (!stats) {
+  //       return res.status(404).json({ error: "Stock stats not found" });
+  //     }
+  //     res.json(stats);
+  //   } catch (error) {
+  //     res.status(500).json({ error: "Failed to fetch stock stats" });
+  //   }
+  // });
 
   // Return routes
   app.get("/api/returns", async (_req, res) => {
@@ -493,11 +492,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('Checking store credit creation:', {
         rawCreditAmount: returnData.creditAmount,
         parsedCreditAmount: creditAmount,
-        hasEmail: !!returnData.customerEmail,
-        shouldCreate: creditAmount > 0 && returnData.customerEmail
+        hasOrderNumber: !!returnData.orderNumber,
+        orderNumber: returnData.orderNumber,
+        shouldCreate: creditAmount > 0 && returnData.orderNumber
       });
 
-      if (creditAmount > 0) {
+      if (creditAmount > 0 && returnData.orderNumber) {
         const code = `CREDIT-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
         const expiresAt = new Date();
         expiresAt.setFullYear(expiresAt.getFullYear() + 1); // 1 year expiry
@@ -506,6 +506,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           code,
           amount: creditAmount.toFixed(2),
           email: returnData.customerEmail,
+          customerName: returnData.customerName,
+          customerPhone: returnData.customerPhone,
           creditAmountType: typeof creditAmount,
           creditAmountValue: creditAmount
         });
@@ -513,7 +515,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           const discountCode = await storage.createDiscountCode({
             code,
-            customerEmail: returnData.customerEmail,
+            customerEmail: returnData.customerEmail || '',
+            customerName: returnData.customerName || '',
+            customerPhone: returnData.customerPhone || '',
             amount: creditAmount.toFixed(2),
             expiresAt,
           });
@@ -524,18 +528,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             amount: discountCode.amount
           });
 
-          // Send email notification
-          try {
-            await emailService.sendDiscountCode(
-              returnData.customerEmail,
-              code,
-              creditAmount.toFixed(2),
-              expiresAt
-            );
-            console.log('Email notification sent successfully');
-          } catch (emailError) {
+          // Send email notification if email is provided
+          if (returnData.customerEmail && returnData.customerEmail !== '') {
+            try {
+              await emailService.sendDiscountCode(
+                returnData.customerEmail,
+                code,
+                creditAmount.toFixed(2),
+                expiresAt
+              );
+              console.log('Email notification sent successfully');
+            } catch (emailError) {
             console.error('Failed to send discount code email:', emailError);
           }
+        }
         } catch (discountError: any) {
           console.error('Failed to create discount code:', discountError);
           console.error('Discount code error details:', {
