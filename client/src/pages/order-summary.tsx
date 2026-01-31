@@ -471,16 +471,19 @@ export default function OrderSummary() {
         const itemSubtotal = parseFloat(item.subtotal) || 0;
         const paymentData = processPaymentMethods(order, itemSubtotal);
         
-        // Calculate payment total (sum of all payment methods without discount)
-        const paymentTotal = paymentData.cash + paymentData.creditCard + paymentData.debitCash + paymentData.upi;
-            
+        // Calculate payment total (sum of all payment methods PLUS discount amount)
+        const basePaymentTotal = paymentData.cash + paymentData.creditCard + paymentData.debitCash + paymentData.upi;
+        
         // Apply discount only to the item with the highest subtotal
         let discountForThisItem = 0;
         if (itemsWithPrices.length > 0 && itemsWithPrices[0].item.id === item.id) { // Apply discount to highest priced item
           discountForThisItem = parseFloat(String(order.discountAmount || '0'));
         }
+        
+        // Payment Total includes the discount amount that was applied
+        const paymentTotal = basePaymentTotal + discountForThisItem;
             
-        // Calculate final total as payment total minus discount
+        // Calculate final total as payment total minus discount (which gives us back the base amount)
         const finalTotal = paymentTotal - discountForThisItem;
         
         const row = [
@@ -919,6 +922,11 @@ export default function OrderSummary() {
                               discountForThisItem = parseFloat(String(order.discountAmount || '0'));
                             }
                             
+                            // Calculate payment total (sum of all payment methods PLUS discount amount)
+                            const basePaymentTotal = paymentData.cash + paymentData.creditCard + paymentData.debitCash + paymentData.upi;
+                            const paymentTotal = basePaymentTotal + discountForThisItem;
+                            const finalTotal = paymentTotal - discountForThisItem;
+                            
                             // Only show category columns for the first item
                             const categoryCells = itemIndex === 0 
                               ? getAllCategories().map(category => (
@@ -965,7 +973,7 @@ export default function OrderSummary() {
                                   ₹{paymentData.upi.toFixed(2)}
                                 </td>
                                 <td className="p-4 align-middle whitespace-nowrap">
-                                  ₹{(paymentData.cash + paymentData.creditCard + paymentData.debitCash + paymentData.upi).toFixed(2)}
+                                  ₹{paymentTotal.toFixed(2)}
                                 </td>
                                 <td className="p-4 align-middle whitespace-nowrap">
                                   ₹{discountForThisItem.toFixed(2)}
