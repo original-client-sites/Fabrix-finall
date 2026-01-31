@@ -502,7 +502,7 @@ export default function OrderSummary() {
         const itemSubtotal = parseFloat(item.subtotal) || 0;
         const paymentData = processPaymentMethods(order, itemSubtotal);
         
-        // Calculate payment total (sum of all payment methods PLUS discount amount)
+        // Calculate actual payment amounts (without adding discount back)
         const basePaymentTotal = paymentData.cash + paymentData.creditCard + paymentData.debitCash + paymentData.upi;
         
         // Apply discount only to the item with the highest subtotal
@@ -511,11 +511,11 @@ export default function OrderSummary() {
           discountForThisItem = parseFloat(String(order.discountAmount || '0'));
         }
         
-        // Payment Total includes the discount amount that was applied
-        const paymentTotal = basePaymentTotal + discountForThisItem;
+        // Payment Total should be the actual payment amount (same as frontend display)
+        const paymentTotal = basePaymentTotal;
             
-        // Calculate final total as payment total minus discount (which gives us back the base amount)
-        const finalTotal = paymentTotal - discountForThisItem;
+        // Final total is the actual amount paid (payment total minus discount)
+        const finalTotal = basePaymentTotal - discountForThisItem;
         
         const row = [
           order.orderNumber,
