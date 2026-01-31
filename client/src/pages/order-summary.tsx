@@ -180,6 +180,9 @@ export default function OrderSummary() {
     // Find the current item in the order
     const items = order.items;
     
+    // Calculate the total order amount based on item subtotals (actual bill amount)
+    const orderTotalFromItems = items.reduce((sum, item) => sum + parseFloat(item.subtotal), 0);
+    
     if (order.paymentMethod === 'mixed' && order.payments && order.payments.length > 0) {
       // For mixed payments, we need to use the original payment amounts
       // entered in the dialog box without using calculated float values
@@ -192,30 +195,13 @@ export default function OrderSummary() {
         paymentByMethod[method] = (paymentByMethod[method] || 0) + amount;
       }
       
-      // Calculate the total order amount based on item subtotals
-      const orderTotalFromItems = items.reduce((sum, item) => sum + parseFloat(item.subtotal), 0);
-      
       // Calculate the proportion of the current item relative to the total
       const itemProportion = orderTotalFromItems > 0 ? itemSubtotal / orderTotalFromItems : 0;
       
-      // Use the distribution logic similar to your provided function
-      const itemIndex = items.findIndex(item => parseFloat(item.subtotal) === itemSubtotal);
-      
-      // For each payment method, distribute using the corrected logic
+      // For each payment method, distribute the total amount based on item proportion
       for (const [method, totalAmount] of Object.entries(paymentByMethod)) {
-        let itemShare = 0;
-        
-        if (itemIndex < items.length - 1) {
-          // For all items except the last one, use proportional distribution with rounding
-          const raw = itemSubtotal * totalAmount / orderTotalFromItems;
-          // Round to nearest integer (you can adjust rounding strategy here)
-          itemShare = Math.round(raw);
-        } else {
-          // For the last item, use correction to ensure totals match exactly
-          // This requires tracking distributed amounts, but for simplicity we'll use proportional
-          const raw = itemSubtotal * totalAmount / orderTotalFromItems;
-          itemShare = Math.round(raw);
-        }
+        // Calculate the item's share of this payment method based on its proportion
+        const itemShare = Math.round(totalAmount * itemProportion);
         
         // Assign the calculated amount based on payment method
         switch (method) {
@@ -233,35 +219,38 @@ export default function OrderSummary() {
             break;
           case 'bank_transfer':
             // Bank transfer is not in the requested columns, so we'll add it to UPI for now
-            upi = itemShare;
+            upi += itemShare;
             break;
           case 'store_credit':
             // Store credit is not in the requested columns, so we'll add it to cash for now
-            cash = itemShare;
+            cash += itemShare;
             break;
           default:
             // Default to cash if unknown payment method
-            cash = itemShare;
+            cash += itemShare;
             break;
         }
       }
     } else {
-      // For non-mixed payments, use similar distribution logic
-      const orderTotal = parseFloat(String(order.totalAmount)) || 1;
-      const itemIndex = items.findIndex(item => parseFloat(item.subtotal) === itemSubtotal);
+      // For non-mixed payments, distribute the single payment method amount proportionally
+      const orderTotal = parseFloat(String(order.totalAmount)) || 0;
       
-      // Use the same distribution approach as mixed payments
-      let itemShare = 0;
+      // Calculate the proportion of the current item relative to the total
+      const itemProportion = orderTotal > 0 ? itemSubtotal / orderTotal : 0;
       
-      if (itemIndex < items.length - 1) {
-        // For all items except the last one, use proportional distribution with rounding
-        const raw = itemSubtotal * orderTotal / orderTotal;
-        itemShare = Math.round(raw);
+      // Get the payment amount for this method
+      let paymentAmount = 0;
+      if (order.payments && order.payments.length > 0) {
+        // For non-mixed orders that have payment details
+        const payment = order.payments.find(p => p.paymentMethod === order.paymentMethod);
+        paymentAmount = payment ? Math.round(parseFloat(payment.amount) || 0) : 0;
       } else {
-        // For the last item, use correction logic
-        const raw = itemSubtotal * orderTotal / orderTotal;
-        itemShare = Math.round(raw);
+        // Fallback to totalAmount for backward compatibility
+        paymentAmount = Math.round(orderTotal);
       }
+      
+      // Calculate item's share based on proportion
+      const itemShare = Math.round(paymentAmount * itemProportion);
       
       // Assign based on payment method
       switch (order.paymentMethod) {
@@ -482,7 +471,7 @@ export default function OrderSummary() {
         const itemSubtotal = parseFloat(item.subtotal) || 0;
         const paymentData = processPaymentMethods(order, itemSubtotal);
         
-        // Calculate payment total
+        // Calculate payment total (sum of all payment methods without discount)
         const paymentTotal = paymentData.cash + paymentData.creditCard + paymentData.debitCash + paymentData.upi;
             
         // Apply discount only to the item with the highest subtotal
@@ -825,86 +814,88 @@ export default function OrderSummary() {
             </Card>
           ) : (
             <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-muted/50">
+              <div className="overflow-x-auto w-full">
+                <table className="w-full min-w-max table-auto">
+                  <thead className="bg-muted/50 sticky top-0">
                     <tr>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap">
                         Order #
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap">
                         Customer Name
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap">
                         Phone Number
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap">
                         Date
                       </th>
                       {getAllCategories().map(category => (
-                        <th key={`header-${category}`} className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                        <th key={`header-${category}`} className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap">
                           {category}
                         </th>
                       ))}
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap">
                         Cash
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap">
                         Credit Card
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap">
                         Debit Cash
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap">
                         UPI
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap">
                         Payment Total
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap">
                         Discount Amount
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap">
                         Remaining Store Credit
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap">
                         Used Store Credit
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap">
                         Returned Items
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap">
                         Items Taken in Exchange
                       </th>
-                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 whitespace-nowrap">
                         Total
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {filteredOrders.map((order) => {
+                    {filteredOrders.map((order, orderIndex) => {
                       const remainingStoreCredit = getRemainingStoreCredit(order.customerEmail || '');
                       const usedStoreCredit = getUsedStoreCreditForOrder(order);
                       const returnedItems = getReturnedItemsForOrder(order.id);
                       const exchangedItems = getExchangedItemsForOrder(order.id);
                       
                       return (
-                        <tr key={order.id} className="hover:bg-muted/30 transition-colors">
-                          <td className="p-4 align-middle" rowSpan={order.items.length}>
+                        <tr key={`${order.id}-${orderIndex}`} className="hover:bg-muted/30 transition-colors">
+                          <td className="p-4 align-middle whitespace-nowrap" rowSpan={order.items.length}>
                             <div className="font-medium font-mono">#{order.orderNumber}</div>
                           </td>
-                          <td className="p-4 align-middle" rowSpan={order.items.length}>
+                          <td className="p-4 align-middle whitespace-nowrap" rowSpan={order.items.length}>
                             <div className="font-medium">{order.customerName}</div>
                             {order.customerEmail && (
-                              <div className="text-sm text-muted-foreground">{order.customerEmail}</div>
+                              <div className="text-sm text-muted-foreground truncate max-w-32">{order.customerEmail}</div>
                             )}
                           </td>
-                          <td className="p-4 align-middle" rowSpan={order.items.length}>
-                            {order.customerPhone && (
+                          <td className="p-4 align-middle whitespace-nowrap" rowSpan={order.items.length}>
+                            {order.customerPhone ? (
                               <div className="font-medium">{order.customerPhone}</div>
+                            ) : (
+                              <div className="text-sm text-muted-foreground">N/A</div>
                             )}
                           </td>
-                          <td className="p-4 align-middle" rowSpan={order.items.length}>
+                          <td className="p-4 align-middle whitespace-nowrap" rowSpan={order.items.length}>
                             <div className="text-sm">
                               {order.date
                                 ? new Date(order.date instanceof Date ? order.date : new Date(order.date)).toISOString().split('T')[0]
@@ -931,8 +922,8 @@ export default function OrderSummary() {
                             // Only show category columns for the first item
                             const categoryCells = itemIndex === 0 
                               ? getAllCategories().map(category => (
-                                  <td key={`category-${category}`} className="p-4 align-middle">
-                                    <div className="text-sm">
+                                  <td key={`category-${category}`} className="p-4 align-middle whitespace-nowrap">
+                                    <div className="text-sm truncate max-w-20">
                                       {getItemsForCategory(order, category)}
                                     </div>
                                   </td>
@@ -950,9 +941,9 @@ export default function OrderSummary() {
                                     <td className="p-4 align-middle"></td>
                                   </>
                                 )}
-                                <td className="p-4 align-middle">
-                                  <div className="font-medium">{item.productName}</div>
-                                  <div className="text-sm text-muted-foreground">SKU: {item.sku}</div>
+                                <td className="p-4 align-middle max-w-xs">
+                                  <div className="font-medium truncate">{item.productName}</div>
+                                  <div className="text-sm text-muted-foreground truncate">SKU: {item.sku}</div>
                                   <div className="text-sm">Qty: {item.quantity}</div>
                                   {discountForThisItem > 0 && (
                                     <div className="text-xs text-green-600 mt-1">
@@ -961,45 +952,45 @@ export default function OrderSummary() {
                                   )}
                                 </td>
                                 {categoryCells}
-                                <td className="p-4 align-middle">
+                                <td className="p-4 align-middle whitespace-nowrap">
                                   ₹{paymentData.cash.toFixed(2)}
                                 </td>
-                                <td className="p-4 align-middle">
+                                <td className="p-4 align-middle whitespace-nowrap">
                                   ₹{paymentData.creditCard.toFixed(2)}
                                 </td>
-                                <td className="p-4 align-middle">
+                                <td className="p-4 align-middle whitespace-nowrap">
                                   ₹{paymentData.debitCash.toFixed(2)}
                                 </td>
-                                <td className="p-4 align-middle">
+                                <td className="p-4 align-middle whitespace-nowrap">
                                   ₹{paymentData.upi.toFixed(2)}
                                 </td>
-                                <td className="p-4 align-middle">
+                                <td className="p-4 align-middle whitespace-nowrap">
                                   ₹{(paymentData.cash + paymentData.creditCard + paymentData.debitCash + paymentData.upi).toFixed(2)}
                                 </td>
-                                <td className="p-4 align-middle">
+                                <td className="p-4 align-middle whitespace-nowrap">
                                   ₹{discountForThisItem.toFixed(2)}
                                 </td>
-                                <td className="p-4 align-middle" rowSpan={order.items.length}>
+                                <td className="p-4 align-middle whitespace-nowrap" rowSpan={order.items.length}>
                                   ₹{remainingStoreCredit.toFixed(2)}
                                 </td>
-                                <td className="p-4 align-middle" rowSpan={order.items.length}>
+                                <td className="p-4 align-middle whitespace-nowrap" rowSpan={order.items.length}>
                                   ₹{usedStoreCredit.totalUsed.toFixed(2)}
                                 </td>
-                                <td className="p-4 align-middle" rowSpan={order.items.length}>
-                                  <div className="text-sm">
+                                <td className="p-4 align-middle max-w-xs" rowSpan={order.items.length}>
+                                  <div className="text-sm truncate">
                                     {returnedItems.length > 0 
                                       ? returnedItems.map(item => `${item.quantity}x ${item.productName}`).join(', ')
                                       : 'None'}
                                   </div>
                                 </td>
-                                <td className="p-4 align-middle" rowSpan={order.items.length}>
-                                  <div className="text-sm">
+                                <td className="p-4 align-middle max-w-xs" rowSpan={order.items.length}>
+                                  <div className="text-sm truncate">
                                     {exchangedItems.length > 0
                                       ? exchangedItems.map(item => `${item.quantity}x ${item.exchangeProductName || item.exchangeProductId}`).join(', ')
                                       : 'None'}
                                   </div>
                                 </td>
-                                <td className="p-4 align-middle font-medium">
+                                <td className="p-4 align-middle font-medium whitespace-nowrap">
                                   ₹{(paymentData.cash + paymentData.creditCard + paymentData.debitCash + paymentData.upi - discountForThisItem).toFixed(2)}
                                 </td>
                               </>
