@@ -396,40 +396,44 @@ export default function StockHistory() {
   };
   
   const exportStockHistory = (format: 'csv' | 'excel') => {
-    // Headers for the stock history export
+    console.log('Export function called with format:', format);
+    
+    // Headers matching the Product Stock Overview table + Created At and Updated At
     const headers = [
-      'Category',
       'Product Name',
-      'MRP',
-      'Barcode',
       'SKU',
-      'Good Inventory',
-      'Block Inventory',
-      'Total Inventory',
-      'Total Price',
-      'Created At',
-      'Updated At'
+      'Category',
+      'Available Stock',
+      'Initial Stock',
+      'Purchased',
+      'Sold',
+      'Returned',
+      'Purchase Return',
+      'Created At'
     ];
     
-    // Create rows from the actual products data (not the calculated stock stats)
-    const rows = products.map(product => {
+    // Create rows from the filtered and sorted product data (same as displayed in UI)
+    const rows = filteredAndSortedProducts.map(product => {
+      const createdAtStr = product.createdAt ? new Date(product.createdAt).toISOString().replace('T', ' ').replace('Z', '') : 'N/A';
       return [
-        sanitizeForCsv(product.category),
         sanitizeForCsv(product.productName),
-        sanitizeForCsv(product.price),
-        sanitizeForCsv(product.productImage || ''), // Using productImage as a substitute for barcode
         sanitizeForCsv(product.sku),
-        sanitizeForCsv(product.stockQuantity), // Good inventory = stock quantity
-        sanitizeForCsv(0), // Block inventory - not available in schema, using 0
-        sanitizeForCsv(product.stockQuantity), // Total inventory = good inventory + block inventory
-        sanitizeForCsv(parseFloat(product.price || '0') * product.stockQuantity), // Total price = MRP * Total inventory
-        sanitizeForCsv(product.createdAt ? new Date(product.createdAt).toISOString().replace('T', ' ').replace('Z', '') : 'N/A'),
-        sanitizeForCsv(product.createdAt ? new Date(product.createdAt).toISOString().replace('T', ' ').replace('Z', '') : 'N/A') // Using createdAt as updatedAt since updatedAt doesn't exist in schema
+        sanitizeForCsv(product.category),
+        sanitizeForCsv(product.available),
+        sanitizeForCsv(product.initialStock),
+        sanitizeForCsv(product.purchased),
+        sanitizeForCsv(product.sold),
+        sanitizeForCsv(product.returned),
+        sanitizeForCsv(product.purchaseReturn),
+        sanitizeForCsv(createdAtStr)
       ];
     });
     
     const data = [headers, ...rows];
     const filename = `stock-history-${new Date().toISOString().split('T')[0]}.${format === 'csv' ? 'csv' : 'xlsx'}`;
+    
+    console.log('Exporting data:', data);
+    console.log('Filename:', filename);
     
     if (format === 'csv') {
       exportToCSV(data, filename);

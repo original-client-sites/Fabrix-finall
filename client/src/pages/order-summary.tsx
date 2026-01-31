@@ -170,69 +170,94 @@ export default function OrderSummary() {
   };
 
   // Process payment methods into separate columns
-  const processPaymentMethods = (order: OrderWithItems) => {
+  const processPaymentMethods = (order: OrderWithItems, itemSubtotal: number) => {
     // Initialize all payment method amounts to 0
     let cash = 0;
     let creditCard = 0;
     let debitCash = 0; // Renamed from debitCard to match requested column name
     let upi = 0;
     
+    // Find the current item in the order
+    const items = order.items;
+    
     if (order.paymentMethod === 'mixed' && order.payments && order.payments.length > 0) {
-      // If it's a mixed payment, sum up each payment method
-      order.payments.forEach((payment: PaymentDetail) => {
-        const amount = parseFloat(payment.amount) || 0;
-        switch (payment.paymentMethod) {
+      // For mixed payments, we need to use the original payment amounts
+      // entered in the dialog box without using calculated float values
+      
+      // First, let's group the payments by method
+      const paymentByMethod: Record<string, number> = {};
+      for (const payment of order.payments) {
+        const method = payment.paymentMethod;
+        const amount = Math.round(parseFloat(payment.amount) || 0); // Original integer value
+        paymentByMethod[method] = (paymentByMethod[method] || 0) + amount;
+      }
+      
+      // Calculate the total order amount based on item subtotals
+      const orderTotalFromItems = items.reduce((sum, item) => sum + parseFloat(item.subtotal), 0);
+      
+      // Calculate the proportion of the current item relative to the total
+      const itemProportion = orderTotalFromItems > 0 ? itemSubtotal / orderTotalFromItems : 0;
+      
+      // For each payment method, distribute the total amount based on item proportion
+      for (const [method, totalAmount] of Object.entries(paymentByMethod)) {
+        // Calculate the item's share of this payment method based on its proportion
+        const itemShare = Math.round(totalAmount * itemProportion);
+        
+        // Assign the calculated amount based on payment method
+        switch (method) {
           case 'cash':
-            cash += amount;
+            cash = itemShare;
             break;
           case 'credit_card':
-            creditCard += amount;
+            creditCard = itemShare;
             break;
           case 'debit_card':
-            debitCash += amount; // Changed to debitCash to match requested column name
+            debitCash = itemShare; // Changed to debitCash to match requested column name
             break;
           case 'upi':
-            upi += amount;
+            upi = itemShare;
             break;
           case 'bank_transfer':
             // Bank transfer is not in the requested columns, so we'll add it to UPI for now
-            // Or we could create a separate column for it
-            upi += amount;
+            upi = itemShare;
             break;
           case 'store_credit':
             // Store credit is not in the requested columns, so we'll add it to cash for now
-            cash += amount;
+            cash = itemShare;
             break;
           default:
             // Default to cash if unknown payment method
-            cash += amount;
+            cash = itemShare;
             break;
         }
-      });
+      }
     } else {
-      // If it's not mixed, assign the total amount to the appropriate column
-      const amount = parseFloat(order.totalAmount) || 0;
+      // For non-mixed payments, allocate based on the item's proportion of the total order
+      const orderTotal = parseFloat(String(order.totalAmount)) || 1;
+      const itemProportion = itemSubtotal / orderTotal;
+      
+      // Round to nearest integer or keep as is, depending on the requirement
       switch (order.paymentMethod) {
         case 'cash':
-          cash = amount;
+          cash = parseFloat((orderTotal * itemProportion).toFixed(2));
           break;
         case 'credit_card':
-          creditCard = amount;
+          creditCard = parseFloat((orderTotal * itemProportion).toFixed(2));
           break;
         case 'debit_card':
-          debitCash = amount; // Changed to debitCash to match requested column name
+          debitCash = parseFloat((orderTotal * itemProportion).toFixed(2)); // Changed to debitCash to match requested column name
           break;
         case 'upi':
-          upi = amount;
+          upi = parseFloat((orderTotal * itemProportion).toFixed(2));
           break;
         case 'bank_transfer':
-          upi = amount; // Map to UPI as per requested columns
+          upi = parseFloat((orderTotal * itemProportion).toFixed(2)); // Map to UPI as per requested columns
           break;
         case 'store_credit':
-          cash = amount; // Map to cash as per requested columns
+          cash = parseFloat((orderTotal * itemProportion).toFixed(2)); // Map to cash as per requested columns
           break;
         default:
-          cash = amount; // Default to cash
+          cash = parseFloat((orderTotal * itemProportion).toFixed(2)); // Default to cash
           break;
       }
     }
@@ -308,13 +333,13 @@ export default function OrderSummary() {
   // Function to aggregate daily payment data
   const getDailyPaymentSummary = () => {
     const dailyPayments: Record<string, Record<string, number>> = {};
-    
+        
     filteredOrders.forEach(order => {
       const date = order.date ? String(order.date) : 'N/A';
-
+  
       const paymentMethod = order.paymentMethod || 'cash';
-      const amount = parseFloat(order.totalAmount) || 0;
-      
+      const amount = parseFloat(String(order.totalAmount)) || 0;
+          
       if (!dailyPayments[date]) {
         dailyPayments[date] = {
           cash: 0,
@@ -326,12 +351,12 @@ export default function OrderSummary() {
           mixed: 0
         };
       }
-      
+          
       if (dailyPayments[date][paymentMethod] !== undefined) {
         dailyPayments[date][paymentMethod] += amount;
       }
     });
-    
+        
     // Convert to array and sort by date
     return Object.entries(dailyPayments)
       .map(([date, payments]) => ({
@@ -403,6 +428,7 @@ export default function OrderSummary() {
       'Credit Card', 
       'Debit Cash', 
       'UPI', 
+      'Payment Total', // New column
       'Discount Amount', 
       'Remaining Store Credit', 
       'Used Store Credit', 
@@ -412,15 +438,35 @@ export default function OrderSummary() {
     ];
     
     filteredOrders.forEach(order => {
-      const paymentData = processPaymentMethods(order);
       const remainingStoreCredit = getRemainingStoreCredit(order.customerEmail || '');
       const usedStoreCredit = getUsedStoreCreditForOrder(order);
       const returnedItems = getReturnedItemsForOrder(order.id);
       const exchangedItems = getExchangedItemsForOrder(order.id);
       
+      // Calculate the highest priced item for discount application
+      const itemsWithPrices = order.items.map(i => ({
+        item: i,
+        price: parseFloat(i.subtotal) || 0
+      })).sort((a, b) => b.price - a.price);
+      
       // Create a row for each item in the order
-      order.items.forEach(item => {
+      order.items.forEach((item, index) => {
         const itemCategory = getProductCategoryByName(item.productName);
+        const itemSubtotal = parseFloat(item.subtotal) || 0;
+        const paymentData = processPaymentMethods(order, itemSubtotal);
+        
+        // Calculate payment total
+        const paymentTotal = paymentData.cash + paymentData.creditCard + paymentData.debitCash + paymentData.upi;
+            
+        // Apply discount only to the item with the highest subtotal
+        let discountForThisItem = 0;
+        if (itemsWithPrices.length > 0 && itemsWithPrices[0].item.id === item.id) { // Apply discount to highest priced item
+          discountForThisItem = parseFloat(String(order.discountAmount || '0'));
+        }
+            
+        // Calculate final total as payment total minus discount
+        const finalTotal = paymentTotal - discountForThisItem;
+        
         const row = [
           order.orderNumber,
           order.customerName,
@@ -434,7 +480,8 @@ export default function OrderSummary() {
           paymentData.creditCard.toFixed(2),
           paymentData.debitCash.toFixed(2),
           paymentData.upi.toFixed(2),
-          parseFloat(order.discountAmount || '0').toFixed(2),
+          paymentTotal.toFixed(2), // New column
+          discountForThisItem.toFixed(2),
           remainingStoreCredit.toFixed(2),
           usedStoreCredit.totalUsed.toFixed(2),
           sanitizeForCsv(returnedItems.length > 0 
@@ -443,7 +490,7 @@ export default function OrderSummary() {
           sanitizeForCsv(exchangedItems.length > 0
             ? exchangedItems.map(item => `${item.quantity}x ${item.exchangeProductName || item.exchangeProductId}`).join(', ')
             : 'None'),
-          parseFloat(order.totalAmount).toFixed(2)
+          finalTotal.toFixed(2) // Updated to be payment total - discount
         ];
         transformedRows.push(row);
       });
@@ -785,6 +832,9 @@ export default function OrderSummary() {
                         UPI
                       </th>
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
+                        Payment Total
+                      </th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
                         Discount Amount
                       </th>
                       <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0">
@@ -806,7 +856,6 @@ export default function OrderSummary() {
                   </thead>
                   <tbody className="divide-y divide-border">
                     {filteredOrders.map((order) => {
-                      const paymentData = processPaymentMethods(order);
                       const remainingStoreCredit = getRemainingStoreCredit(order.customerEmail || '');
                       const usedStoreCredit = getUsedStoreCreditForOrder(order);
                       const returnedItems = getReturnedItemsForOrder(order.id);
@@ -814,72 +863,121 @@ export default function OrderSummary() {
                       
                       return (
                         <tr key={order.id} className="hover:bg-muted/30 transition-colors">
-                          <td className="p-4 align-middle">
+                          <td className="p-4 align-middle" rowSpan={order.items.length}>
                             <div className="font-medium font-mono">#{order.orderNumber}</div>
                           </td>
-                          <td className="p-4 align-middle">
+                          <td className="p-4 align-middle" rowSpan={order.items.length}>
                             <div className="font-medium">{order.customerName}</div>
                             {order.customerEmail && (
                               <div className="text-sm text-muted-foreground">{order.customerEmail}</div>
                             )}
                           </td>
-                          <td className="p-4 align-middle">
+                          <td className="p-4 align-middle" rowSpan={order.items.length}>
                             {order.customerPhone && (
                               <div className="font-medium">{order.customerPhone}</div>
                             )}
                           </td>
-                          <td className="p-4 align-middle">
+                          <td className="p-4 align-middle" rowSpan={order.items.length}>
                             <div className="text-sm">
                               {order.date
                                 ? new Date(order.date instanceof Date ? order.date : new Date(order.date)).toISOString().split('T')[0]
                                 : 'N/A'}
                             </div>
                           </td>
-                          {getAllCategories().map(category => (
-                            <td key={`${order.id}-${category}`} className="p-4 align-middle">
-                              <div className="text-sm">
-                                {getItemsForCategory(order, category)}
-                              </div>
-                            </td>
-                          ))}
-                          <td className="p-4 align-middle">
-                            ₹{paymentData.cash.toFixed(2)}
-                          </td>
-                          <td className="p-4 align-middle">
-                            ₹{paymentData.creditCard.toFixed(2)}
-                          </td>
-                          <td className="p-4 align-middle">
-                            ₹{paymentData.debitCash.toFixed(2)}
-                          </td>
-                          <td className="p-4 align-middle">
-                            ₹{paymentData.upi.toFixed(2)}
-                          </td>
-                          <td className="p-4 align-middle">
-                            ₹{(parseFloat(order.discountAmount || '0')).toFixed(2)}
-                          </td>
-                          <td className="p-4 align-middle">
-                            ₹{remainingStoreCredit.toFixed(2)}
-                          </td>
-                          <td className="p-4 align-middle">
-                            ₹{usedStoreCredit.totalUsed.toFixed(2)}
-                          </td>
-                          <td className="p-4 align-middle">
-                            <div className="text-sm">
-                              {returnedItems.length > 0 
-                                ? returnedItems.map(item => `${item.quantity}x ${item.productName}`).join(', ')
-                                : 'None'}
-                            </div>
-                          </td>
-                          <td className="p-4 align-middle">
-                            <div className="text-sm">
-                              {exchangedItems.length > 0
-                                ? exchangedItems.map(item => `${item.quantity}x ${item.exchangeProductName || item.exchangeProductId}`).join(', ')
-                                : 'None'}
-                            </div>
-                          </td>
-                          <td className="p-4 align-middle font-medium">
-                            ₹{parseFloat(order.totalAmount).toFixed(2)}
-                          </td>
+                          {order.items.map((item, itemIndex) => {
+                            const itemCategory = getProductCategoryByName(item.productName);
+                            const itemSubtotal = parseFloat(item.subtotal) || 0;
+                            const paymentData = processPaymentMethods(order, itemSubtotal);
+                            
+                            // Apply discount only to the item with the highest price
+                            let discountForThisItem = 0;
+                            const itemsWithPrices = order.items.map(i => ({
+                              item: i,
+                              price: parseFloat(i.subtotal) || 0
+                            })).sort((a, b) => b.price - a.price);
+                            
+                            // Apply discount to the highest priced item
+                            if (itemsWithPrices.length > 0 && itemsWithPrices[0].item.id === item.id) {
+                              discountForThisItem = parseFloat(String(order.discountAmount || '0'));
+                            }
+                            
+                            // Only show category columns for the first item
+                            const categoryCells = itemIndex === 0 
+                              ? getAllCategories().map(category => (
+                                  <td key={`category-${category}`} className="p-4 align-middle">
+                                    <div className="text-sm">
+                                      {getItemsForCategory(order, category)}
+                                    </div>
+                                  </td>
+                                ))
+                              : [];
+                            
+                            return (
+                              <>
+                                {itemIndex > 0 && (
+                                  <>
+                                    <td className="p-4 align-middle"></td>
+                                    <td className="p-4 align-middle"></td>
+                                    <td className="p-4 align-middle"></td>
+                                    <td className="p-4 align-middle"></td>
+                                    <td className="p-4 align-middle"></td>
+                                  </>
+                                )}
+                                <td className="p-4 align-middle">
+                                  <div className="font-medium">{item.productName}</div>
+                                  <div className="text-sm text-muted-foreground">SKU: {item.sku}</div>
+                                  <div className="text-sm">Qty: {item.quantity}</div>
+                                  {discountForThisItem > 0 && (
+                                    <div className="text-xs text-green-600 mt-1">
+                                      Discount applied: ₹{discountForThisItem.toFixed(2)}
+                                    </div>
+                                  )}
+                                </td>
+                                {categoryCells}
+                                <td className="p-4 align-middle">
+                                  ₹{paymentData.cash.toFixed(2)}
+                                </td>
+                                <td className="p-4 align-middle">
+                                  ₹{paymentData.creditCard.toFixed(2)}
+                                </td>
+                                <td className="p-4 align-middle">
+                                  ₹{paymentData.debitCash.toFixed(2)}
+                                </td>
+                                <td className="p-4 align-middle">
+                                  ₹{paymentData.upi.toFixed(2)}
+                                </td>
+                                <td className="p-4 align-middle">
+                                  ₹{(paymentData.cash + paymentData.creditCard + paymentData.debitCash + paymentData.upi).toFixed(2)}
+                                </td>
+                                <td className="p-4 align-middle">
+                                  ₹{discountForThisItem.toFixed(2)}
+                                </td>
+                                <td className="p-4 align-middle" rowSpan={order.items.length}>
+                                  ₹{remainingStoreCredit.toFixed(2)}
+                                </td>
+                                <td className="p-4 align-middle" rowSpan={order.items.length}>
+                                  ₹{usedStoreCredit.totalUsed.toFixed(2)}
+                                </td>
+                                <td className="p-4 align-middle" rowSpan={order.items.length}>
+                                  <div className="text-sm">
+                                    {returnedItems.length > 0 
+                                      ? returnedItems.map(item => `${item.quantity}x ${item.productName}`).join(', ')
+                                      : 'None'}
+                                  </div>
+                                </td>
+                                <td className="p-4 align-middle" rowSpan={order.items.length}>
+                                  <div className="text-sm">
+                                    {exchangedItems.length > 0
+                                      ? exchangedItems.map(item => `${item.quantity}x ${item.exchangeProductName || item.exchangeProductId}`).join(', ')
+                                      : 'None'}
+                                  </div>
+                                </td>
+                                <td className="p-4 align-middle font-medium">
+                                  ₹{(paymentData.cash + paymentData.creditCard + paymentData.debitCash + paymentData.upi - discountForThisItem).toFixed(2)}
+                                </td>
+                              </>
+                            );
+                          })}
                         </tr>
                       )
                     })}
