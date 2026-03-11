@@ -53,12 +53,28 @@ export default function Orders() {
     const matchesStatus =
       selectedStatus === "all" || order.status === selectedStatus;
     
-    // Date range filter
-    const matchesDate = (!startDate || !order.date || new Date(order.date) >= new Date(startDate)) && 
-                       (!endDate || !order.date || new Date(order.date) <= new Date(endDate));
+    // Date range filter - normalize all dates to start of day for proper comparison
+    let matchesDate = true;
+    if (order.date) {
+      const orderDate = new Date(order.date);
+      // Normalize order date to start of day (remove time component)
+      orderDate.setHours(0, 0, 0, 0);
+      
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        if (orderDate < start) matchesDate = false;
+      }
+      
+      if (endDate && matchesDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999); // Include the entire end date
+        if (orderDate > end) matchesDate = false;
+      }
+    }
     
     // Amount range filter
-    const orderAmount = parseFloat(order.totalAmount);
+    const orderAmount = typeof order.totalAmount === 'number' ? order.totalAmount : parseFloat(order.totalAmount);
     const matchesAmount = (!minAmount || orderAmount >= parseFloat(minAmount)) && 
                         (!maxAmount || orderAmount <= parseFloat(maxAmount));
     
@@ -79,9 +95,13 @@ export default function Orders() {
         const dateB2 = b.date ? (b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime()) : 0;
         return dateA2 - dateB2; // Lower timestamp first
       case "amount_high":
-        return parseFloat(b.totalAmount) - parseFloat(a.totalAmount);
+        const amountHighA = typeof a.totalAmount === 'number' ? a.totalAmount : parseFloat(a.totalAmount);
+        const amountHighB = typeof b.totalAmount === 'number' ? b.totalAmount : parseFloat(b.totalAmount);
+        return amountHighB - amountHighA;
       case "amount_low":
-        return parseFloat(a.totalAmount) - parseFloat(b.totalAmount);
+        const amountLowA = typeof a.totalAmount === 'number' ? a.totalAmount : parseFloat(a.totalAmount);
+        const amountLowB = typeof b.totalAmount === 'number' ? b.totalAmount : parseFloat(b.totalAmount);
+        return amountLowA - amountLowB;
       case "customer_name":
         return a.customerName.localeCompare(b.customerName);
       default:
@@ -170,10 +190,18 @@ export default function Orders() {
                     <CalendarIcon className="h-4 w-4" />
                     Date Range
                     {(startDate || endDate) && (
-                      <span className="ml-1 text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">
-                        {startDate && `From: ${new Date(startDate).toLocaleDateString()}`} 
-                        {endDate && ` To: ${new Date(endDate).toLocaleDateString()}`}
-                      </span>
+                      <div className="flex gap-1">
+                        {startDate && (
+                          <span className="text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">
+                            From: {new Date(startDate).toLocaleDateString()}
+                          </span>
+                        )}
+                        {endDate && (
+                          <span className="text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">
+                            To: {new Date(endDate).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </Button>
                 </DropdownMenuTrigger>
@@ -198,8 +226,18 @@ export default function Orders() {
                           <Calendar
                             mode="single"
                             selected={startDate ? new Date(startDate) : undefined}
-                            onSelect={(date) => setStartDate(date ? date.toISOString().split('T')[0] : "")}
-                            initialFocus
+                            onSelect={(date) => {
+                              if (date) {
+                                // Convert to local date string without timezone issues
+                                const year = date.getFullYear();
+                                const month = String(date.getMonth() + 1).padStart(2, '0');
+                                const day = String(date.getDate()).padStart(2, '0');
+                                setStartDate(`${year}-${month}-${day}`);
+                              } else {
+                                setStartDate("");
+                              }
+                            }}
+                            disabled={(date) => date > new Date()}
                           />
                         </PopoverContent>
                       </Popover>
@@ -221,12 +259,34 @@ export default function Orders() {
                           <Calendar
                             mode="single"
                             selected={endDate ? new Date(endDate) : undefined}
-                            onSelect={(date) => setEndDate(date ? date.toISOString().split('T')[0] : "")}
-                            initialFocus
+                            onSelect={(date) => {
+                              if (date) {
+                                // Convert to local date string without timezone issues
+                                const year = date.getFullYear();
+                                const month = String(date.getMonth() + 1).padStart(2, '0');
+                                const day = String(date.getDate()).padStart(2, '0');
+                                setEndDate(`${year}-${month}-${day}`);
+                              } else {
+                                setEndDate("");
+                              }
+                            }}
+                            disabled={(date) => date > new Date()}
                           />
                         </PopoverContent>
                       </Popover>
                     </div>
+                    {(startDate || endDate) && (
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setStartDate("");
+                          setEndDate("");
+                        }}
+                        className="w-full"
+                      >
+                        Clear Dates
+                      </Button>
+                    )}
                   </div>
                 </DropdownMenuContent>
               </DropdownMenu>

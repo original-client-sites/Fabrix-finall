@@ -29,7 +29,7 @@ import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Cart
 import type { Product, OrderWithItems, ReturnWithItems, StockMovement, Account } from "@shared/schema.mysql";
 import { format, parseISO, startOfDay, startOfHour, startOfMonth, startOfYear, subDays, subMonths, subYears } from "date-fns";
 
-type TimeRange = "hourly" | "daily" | "monthly" | "yearly";
+type TimeRange = "hourly" | "daily" | "monthly" | "yearly" | "all";
 
 interface ProfitData {
   period: string;
@@ -119,44 +119,101 @@ export default function ProfitLoss() {
     return new Map(products.map(p => [p.id, p]));
   }, [products]);
 
+  // Calculate the start date based on time range
+  const getStartDate = useMemo(() => {
+    const now = new Date();
+    switch (timeRange) {
+      case "hourly":
+        // Start of current hour
+        const startOfHour = new Date(now);
+        startOfHour.setMinutes(0, 0, 0);
+        return startOfHour;
+      case "daily":
+        // Start of today
+        const startOfDay = new Date(now);
+        startOfDay.setHours(0, 0, 0, 0);
+        return startOfDay;
+      case "monthly":
+        // Start of current month
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        return startOfMonth;
+      case "yearly":
+        // Start of current year
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+        return startOfYear;
+      case "all":
+        // From beginning
+        return new Date(0);
+      default:
+        return new Date(0);
+    }
+  }, [timeRange]);
+
   // Calculate profit/loss data grouped by time period
   const profitData = useMemo(() => {
     console.log('Calculating profitData with:', { orders: orders.length, returns: returns.length, accounts: accounts.length, timeRange });
     const now = new Date();
     let periods: Date[] = [];
     let formatString = "";
+    let startDate = getStartDate;
 
-    switch (timeRange) {
-      case "hourly":
-        // Last 24 hours
-        for (let i = 23; i >= 0; i--) {
-          const date = new Date(now);
-          date.setHours(now.getHours() - i, 0, 0, 0);
-          periods.push(date);
-        }
-        formatString = "HH:00";
-        break;
-      case "daily":
-        // Last 30 days
-        for (let i = 29; i >= 0; i--) {
-          periods.push(subDays(startOfDay(now), i));
-        }
-        formatString = "MMM dd";
-        break;
-      case "monthly":
-        // Last 12 months
-        for (let i = 11; i >= 0; i--) {
-          periods.push(subMonths(startOfMonth(now), i));
-        }
-        formatString = "MMM yyyy";
-        break;
-      case "yearly":
-        // Last 5 years
-        for (let i = 4; i >= 0; i--) {
-          periods.push(subYears(startOfYear(now), i));
-        }
-        formatString = "yyyy";
-        break;
+    // If timeRange is 'all', show monthly data from the beginning
+    if (timeRange === 'all') {
+      // Find the earliest transaction date
+      const allDates = [
+        ...orders.filter(o => o.date).map(o => typeof o.date === 'string' ? parseISO(o.date!) : new Date(o.date!)),
+        ...returns.filter(r => r.createdAt).map(r => new Date(r.createdAt!)),
+        ...accounts.filter(a => a.transactionDate).map(a => new Date(a.transactionDate!))
+      ].filter(d => !isNaN(d.getTime()));
+      
+      if (allDates.length > 0) {
+        const earliestDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+        startDate = new Date(earliestDate.getFullYear(), earliestDate.getMonth(), 1);
+      }
+      
+      // Generate monthly periods from start date to now
+      const currentDate = new Date(startDate);
+      while (currentDate <= now) {
+        periods.push(new Date(currentDate));
+        currentDate.setMonth(currentDate.getMonth() + 1);
+      }
+      formatString = "MMM yyyy";
+    } else {
+      switch (timeRange) {
+        case "hourly":
+          // Hours in current hour (just one period)
+          const startOfHour = new Date(now);
+          startOfHour.setMinutes(0, 0, 0);
+          periods.push(startOfHour);
+          formatString = "HH:00";
+          break;
+        case "daily":
+          // Today - show hourly breakdown
+          for (let i = 0; i < 24; i++) {
+            const date = new Date(now);
+            date.setHours(i, 0, 0, 0);
+            if (date <= now) {
+              periods.push(date);
+            }
+          }
+          formatString = "HH:00";
+          break;
+        case "monthly":
+          // Days in current month
+          const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+          for (let i = 1; i <= daysInMonth; i++) {
+            periods.push(new Date(now.getFullYear(), now.getMonth(), i));
+          }
+          formatString = "MMM dd";
+          break;
+        case "yearly":
+          // Months in current year
+          for (let i = 0; i < 12; i++) {
+            periods.push(new Date(now.getFullYear(), i, 1));
+          }
+          formatString = "MMM";
+          break;
+      }
     }
 
     console.log('Generated periods for', timeRange, ':', periods.map(p => p.toISOString()));
@@ -196,39 +253,30 @@ export default function ProfitLoss() {
           break;
       }
 
-      // Filter orders for this period
+      // Filter orders for this period (only include if >= startDate)
       const periodOrders = orders.filter(o => {
         if (!o.date) return false;
         const orderDate = typeof o.date === 'string' ? parseISO(o.date) : new Date(o.date);
-        // Normalize dates to start of day for comparison
+        // Must be >= startDate and in the period range
+        if (orderDate < startDate) return false;
+        
         const normalizedOrderDate = startOfDay(orderDate);
         const normalizedPeriod = startOfDay(period);
         const normalizedNextPeriod = startOfDay(nextPeriod);
-        const isInRange = normalizedOrderDate >= normalizedPeriod && normalizedOrderDate < normalizedNextPeriod;
-        
-        // Log the first few comparisons for debugging
-        if (periods.indexOf(period) === 0) { // Only log for first period to avoid spam
-          console.log(`Comparing Order ${o.id}: orderDate=${orderDate.toISOString()}, normalized=${normalizedOrderDate.toISOString()}`);
-          console.log(`  Period range: [${normalizedPeriod.toISOString()}, ${normalizedNextPeriod.toISOString()})`);
-          console.log(`  Is in range: ${isInRange}`);
-        }
-        
-        return isInRange;
+        return normalizedOrderDate >= normalizedPeriod && normalizedOrderDate < normalizedNextPeriod;
       });
 
       // Filter returns for this period
       const periodReturns = returns.filter(r => {
         if (!r.createdAt) return false;
         const returnDate = typeof r.createdAt === 'string' ? parseISO(r.createdAt) : new Date(r.createdAt);
-        // Normalize dates to start of day for comparison
+        // Must be >= startDate
+        if (returnDate < startDate) return false;
+        
         const normalizedReturnDate = startOfDay(returnDate);
         const normalizedPeriod = startOfDay(period);
         const normalizedNextPeriod = startOfDay(nextPeriod);
-        const isInRange = normalizedReturnDate >= normalizedPeriod && normalizedReturnDate < normalizedNextPeriod;
-        if (isInRange) {
-          console.log(`Return ${r.id} date ${returnDate.toISOString()} (normalized: ${normalizedReturnDate.toISOString()}) is in range [${normalizedPeriod.toISOString()}, ${normalizedNextPeriod.toISOString()})`);
-        }
-        return isInRange;
+        return normalizedReturnDate >= normalizedPeriod && normalizedReturnDate < normalizedNextPeriod;
       });
 
       // Filter purchase accounts for this period
@@ -236,16 +284,13 @@ export default function ProfitLoss() {
         if (!a.transactionDate) return false;
         const txDate = typeof a.transactionDate === 'string' ? parseISO(a.transactionDate) : new Date(a.transactionDate);
         const isPurchase = a.transactionType === "purchase";
-        // Normalize dates to start of day for comparison
+        // Must be >= startDate
+        if (txDate < startDate) return false;
+        
         const normalizedTxDate = startOfDay(txDate);
         const normalizedPeriod = startOfDay(period);
         const normalizedNextPeriod = startOfDay(nextPeriod);
-        const isInRange = normalizedTxDate >= normalizedPeriod && normalizedTxDate < normalizedNextPeriod;
-        const isValid = isPurchase && isInRange;
-        if (isValid) {
-          console.log(`Account ${a.id} date ${txDate.toISOString()} (normalized: ${normalizedTxDate.toISOString()}) is purchase in range [${normalizedPeriod.toISOString()}, ${normalizedNextPeriod.toISOString()})`);
-        }
-        return isValid;
+        return isPurchase && normalizedTxDate >= normalizedPeriod && normalizedTxDate < normalizedNextPeriod;
       });
 
       // Calculate revenue from orders
@@ -351,7 +396,7 @@ export default function ProfitLoss() {
     }
     
     return data;
-  }, [orders, returns, productMap, timeRange, accounts]);
+  }, [orders, returns, productMap, timeRange, accounts, getStartDate]);
 
   // Payment method statistics - with proper mixed payment distribution
   const paymentMethodStats = useMemo(() => {
@@ -784,6 +829,56 @@ export default function ProfitLoss() {
     };
   }, [profitData, accounts, productMap, orders, returns, products, movements]);
 
+  // Calculate time-range specific statistics for the 4 cards
+  const timeRangeStatistics = useMemo(() => {
+    // Sum up the values from the profitData for the selected time range
+    const timeRangeRevenue = profitData.reduce((sum, d) => sum + d.revenue, 0);
+    const timeRangeCost = profitData.reduce((sum, d) => sum + d.cost, 0);
+    const timeRangeProfit = profitData.reduce((sum, d) => sum + d.profit, 0);
+    const timeRangeOrders = profitData.reduce((sum, d) => sum + d.orders, 0);
+    
+    // Calculate total items sold (stock out) in this time range
+    const totalItemsSold = orders
+      .filter(order => {
+        if (!order.date) return false;
+        const orderDate = typeof order.date === 'string' ? parseISO(order.date) : new Date(order.date);
+        return orderDate >= getStartDate;
+      })
+      .reduce((sum, order) => {
+        return sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0);
+      }, 0);
+    
+    // Calculate total items added as stock (purchases) in this time range
+    const totalItemsAdded = movements
+      .filter(m => {
+        if (!m.createdAt) return false;
+        if (m.type !== 'in') return false;
+        const movementDate = typeof m.createdAt === 'string' ? parseISO(m.createdAt) : new Date(m.createdAt);
+        return movementDate >= getStartDate && (m.reason === 'purchase' || m.reason === 'initial stock');
+      })
+      .reduce((sum, m) => sum + m.quantity, 0);
+    
+    // Determine labels based on profit/loss
+    const grossProfitLabel = timeRangeProfit >= 0 ? "Gross Profit" : "Gross Loss";
+    const netProfitLabel = timeRangeProfit >= 0 ? "Net Profit" : "Net Loss";
+    const grossValue = timeRangeProfit >= 0 ? timeRangeProfit : Math.abs(timeRangeProfit);
+    const netValue = timeRangeProfit >= 0 ? timeRangeProfit : Math.abs(timeRangeProfit);
+    
+    return {
+      sales: timeRangeRevenue,
+      purchase: timeRangeCost,
+      grossProfit: grossValue,
+      grossLoss: grossValue,
+      grossProfitLabel,
+      netProfit: netValue,
+      netLoss: netValue,
+      netProfitLabel,
+      totalOrders: timeRangeOrders,
+      totalItemsSold,
+      totalItemsAdded,
+    };
+  }, [profitData, orders, movements, getStartDate]);
+
   // Product category breakdown
   const categoryBreakdown = useMemo(() => {
     const breakdown = new Map<string, { revenue: number; cost: number; profit: number }>();
@@ -870,10 +965,11 @@ export default function ProfitLoss() {
                   <SelectValue placeholder="Select range" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="hourly">Hourly (24h)</SelectItem>
-                  <SelectItem value="daily">Daily (30d)</SelectItem>
-                  <SelectItem value="monthly">Monthly (12m)</SelectItem>
-                  <SelectItem value="yearly">Yearly (5y)</SelectItem>
+                  <SelectItem value="hourly">This Hour</SelectItem>
+                  <SelectItem value="daily">Today</SelectItem>
+                  <SelectItem value="monthly">This Month</SelectItem>
+                  <SelectItem value="yearly">This Year</SelectItem>
+                  <SelectItem value="all">All Time</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -890,14 +986,14 @@ export default function ProfitLoss() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Sales</CardTitle>
-                  <IndianRupee className="h-4 w-4 text-blue-600" />
+                  <ShoppingCart className="h-4 w-4 text-blue-600" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-blue-600" data-testid="stat-sales">
-                    ₹{statistics.sales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{timeRangeStatistics.sales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    From {statistics.totalOrders} orders
+                    {timeRangeStatistics.totalItemsSold} units sold
                   </p>
                 </CardContent>
               </Card>
@@ -909,10 +1005,10 @@ export default function ProfitLoss() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-orange-600" data-testid="stat-purchase">
-                    ₹{statistics.purchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{timeRangeStatistics.purchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    From inventory purchases
+                    {timeRangeStatistics.totalItemsAdded} units added
                   </p>
                 </CardContent>
               </Card>
@@ -923,9 +1019,9 @@ export default function ProfitLoss() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
-                    {statistics.grossProfit > 0 ? "Gross Profit" : "Gross Loss"}
+                    {timeRangeStatistics.grossProfitLabel}
                   </CardTitle>
-                  {statistics.grossProfit > 0 ? (
+                  {timeRangeStatistics.grossProfit >= 0 ? (
                     <TrendingUp className="h-4 w-4 text-green-600" />
                   ) : (
                     <TrendingDown className="h-4 w-4 text-red-600" />
@@ -933,13 +1029,13 @@ export default function ProfitLoss() {
                 </CardHeader>
                 <CardContent>
                   <div 
-                    className={`text-2xl font-bold ${statistics.grossProfit > 0 ? 'text-green-600' : 'text-red-600'}`} 
+                    className={`text-2xl font-bold ${timeRangeStatistics.grossProfit >= 0 ? 'text-green-600' : 'text-red-600'}`} 
                     data-testid="stat-gross-profit"
                   >
-                    ₹{(statistics.grossProfit > 0 ? statistics.grossProfit : statistics.grossLoss).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{timeRangeStatistics.grossProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Sales + Closing - Opening - Purchase
+                    {timeRange === 'all' ? 'From start to end' : `Based on ${timeRange} data`}
                   </p>
                 </CardContent>
               </Card>
@@ -947,9 +1043,9 @@ export default function ProfitLoss() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
-                    {statistics.netProfit > 0 ? "Net Profit" : "Net Loss"}
+                    {timeRangeStatistics.netProfitLabel}
                   </CardTitle>
-                  {statistics.netProfit > 0 ? (
+                  {timeRangeStatistics.netProfit >= 0 ? (
                     <IndianRupee className="h-4 w-4 text-green-600" />
                   ) : (
                     <TrendingDown className="h-4 w-4 text-red-600" />
@@ -957,13 +1053,13 @@ export default function ProfitLoss() {
                 </CardHeader>
                 <CardContent>
                   <div 
-                    className={`text-2xl font-bold ${statistics.netProfit > 0 ? 'text-green-600' : 'text-red-600'}`} 
+                    className={`text-2xl font-bold ${timeRangeStatistics.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`} 
                     data-testid="stat-net-profit"
                   >
-                    ₹{(statistics.netProfit > 0 ? statistics.netProfit : statistics.netLoss).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{timeRangeStatistics.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Gross Profit + Indirect Inc - Indirect Exp
+                    {timeRange === 'all' ? 'From start to end' : `Based on ${timeRange} data`}
                   </p>
                 </CardContent>
               </Card>
