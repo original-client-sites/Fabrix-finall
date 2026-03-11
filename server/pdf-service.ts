@@ -1,9 +1,12 @@
 
 import PDFDocument from 'pdfkit';
-import type { OrderWithItems, ReturnWithItems } from '@shared/schema';
+import type { OrderWithItems, ReturnWithItems } from '@shared/schema.mysql';
+
+// Define PDFDocument type alias
+type PDFDoc = InstanceType<typeof PDFDocument>;
 
 export class PDFService {
-  private addStoreHeader(doc: PDFDocument) {
+  private addStoreHeader(doc: PDFDoc) {
     // Store name and logo placeholder
     doc.fontSize(24).font('Helvetica-Bold').text('FABRIX', { align: 'center' });
     doc.moveDown(0.3);
@@ -21,7 +24,7 @@ export class PDFService {
     doc.moveDown();
   }
 
-  private addCustomerInfo(doc: PDFDocument, customerName: string, customerEmail?: string, customerPhone?: string) {
+  private addCustomerInfo(doc: PDFDoc, customerName: string, customerEmail?: string | null, customerPhone?: string | null) {
     const startY = doc.y;
     
     doc.fontSize(12).font('Helvetica-Bold').text('BILL TO:', 50, startY);
@@ -31,7 +34,7 @@ export class PDFService {
     if (customerEmail) doc.text(`Email: ${customerEmail}`, 50);
   }
 
-  private addTermsAndConditions(doc: PDFDocument) {
+  private addTermsAndConditions(doc: PDFDoc) {
     doc.moveDown(1.5);
     doc.fontSize(10).font('Helvetica-Bold').text('Terms & Conditions:', 50);
     doc.fontSize(8).font('Helvetica');
@@ -41,7 +44,7 @@ export class PDFService {
     doc.text('• Please check your items before leaving the store.', 50);
   }
 
-  private addFooter(doc: PDFDocument) {
+  private addFooter(doc: PDFDoc) {
     doc.moveDown(2);
     doc.fontSize(12).font('Helvetica-Bold').text('Thank you for shopping with us!', { align: 'center' });
     doc.fontSize(10).font('Helvetica').text('Visit us again soon!', { align: 'center' });
@@ -73,17 +76,17 @@ export class PDFService {
         doc.fontSize(10).font('Helvetica');
         doc.text(`Return No: ${returnData.returnNumber}`, 350, detailsStartY, { align: 'right' });
         doc.text(`Original Order: ${returnData.orderNumber}`, 350, detailsStartY + 15, { align: 'right' });
-        doc.text(`Date: ${new Date(returnData.createdAt).toLocaleString('en-IN', { 
+        doc.text(`Date: ${returnData.createdAt ? new Date(returnData.createdAt).toLocaleString('en-IN', { 
           day: '2-digit', 
           month: 'short', 
           year: 'numeric',
           hour: '2-digit',
           minute: '2-digit'
-        })}`, 350, detailsStartY + 30, { align: 'right' });
+        }) : ''}`, 350, detailsStartY + 30, { align: 'right' });
 
         // Customer details (left side)
         doc.y = detailsStartY;
-        this.addCustomerInfo(doc, returnData.customerName, returnData.customerEmail);
+        this.addCustomerInfo(doc, returnData.customerName, returnData.customerEmail || undefined);
         
         doc.moveDown(2);
 
@@ -111,8 +114,8 @@ export class PDFService {
           doc.text(item.productName, 50, yPosition, { width: 140 });
           doc.text(item.sku, 200, yPosition);
           doc.text(item.quantity.toString(), 320, yPosition);
-          doc.text(`$${item.unitPrice}`, 380, yPosition);
-          doc.text(`$${item.subtotal}`, 480, yPosition, { align: 'right' });
+          doc.text(`inr ${item.unitPrice}`, 380, yPosition);
+          doc.text(`inr ${item.subtotal}`, 480, yPosition, { align: 'right' });
           totalReturnValue += parseFloat(item.subtotal);
           yPosition += 25;
         });
@@ -143,8 +146,8 @@ export class PDFService {
               const exchangeTotal = parseFloat(returnData.exchangeValue || '0') / exchangeItems.length;
               doc.text(item.exchangeProductName, 50, yPosition, { width: 260 });
               doc.text(item.quantity.toString(), 320, yPosition);
-              doc.text(`$${(exchangeTotal / item.quantity).toFixed(2)}`, 380, yPosition);
-              doc.text(`$${exchangeTotal.toFixed(2)}`, 480, yPosition, { align: 'right' });
+              doc.text(`inr ${(exchangeTotal / item.quantity).toFixed(2)}`, 380, yPosition);
+              doc.text(`inr ${exchangeTotal.toFixed(2)}`, 480, yPosition, { align: 'right' });
               totalExchangeValue += exchangeTotal;
               yPosition += 25;
             }
@@ -157,12 +160,25 @@ export class PDFService {
         doc.fontSize(10).font('Helvetica');
         
         doc.text('Return Value:', 320, yPosition);
-        doc.text(`$${totalReturnValue.toFixed(2)}`, 480, yPosition, { align: 'right' });
+        doc.text(`inr ${totalReturnValue.toFixed(2)}`, 480, yPosition, { align: 'right' });
         yPosition += 20;
+        
+        // Show refund/credit details
+        if (returnData.refundAmount && parseFloat(returnData.refundAmount) > 0) {
+          doc.text('Refund Amount:', 320, yPosition);
+          doc.text(`inr ${returnData.refundAmount}`, 480, yPosition, { align: 'right' });
+          yPosition += 20;
+        }
+        
+        if (returnData.creditAmount && parseFloat(returnData.creditAmount) > 0) {
+          doc.text('Store Credit:', 320, yPosition);
+          doc.text(`inr ${returnData.creditAmount}`, 480, yPosition, { align: 'right' });
+          yPosition += 20;
+        }
 
         if (returnData.exchangeValue && parseFloat(returnData.exchangeValue) > 0) {
           doc.text('Exchange Value:', 320, yPosition);
-          doc.text(`$${returnData.exchangeValue}`, 480, yPosition, { align: 'right' });
+          doc.text(`inr ${returnData.exchangeValue}`, 480, yPosition, { align: 'right' });
           yPosition += 25;
           
           doc.moveTo(50, yPosition).lineTo(550, yPosition).stroke();
@@ -171,20 +187,20 @@ export class PDFService {
           doc.fontSize(12).font('Helvetica-Bold');
           if (returnData.refundAmount && parseFloat(returnData.refundAmount) > 0) {
             doc.text('Refund Amount:', 320, yPosition);
-            doc.text(`$${returnData.refundAmount}`, 480, yPosition, { align: 'right' });
+            doc.text(`inr ${returnData.refundAmount}`, 480, yPosition, { align: 'right' });
           } else if (returnData.additionalPayment && parseFloat(returnData.additionalPayment) > 0) {
             doc.text('Additional Payment:', 320, yPosition);
-            doc.text(`$${returnData.additionalPayment}`, 480, yPosition, { align: 'right' });
+            doc.text(`inr ${returnData.additionalPayment}`, 480, yPosition, { align: 'right' });
           } else {
             doc.text('Even Exchange:', 320, yPosition);
-            doc.text('$0.00', 480, yPosition, { align: 'right' });
+            doc.text('inr 0.00', 480, yPosition, { align: 'right' });
           }
         } else {
           doc.moveTo(50, yPosition).lineTo(550, yPosition).stroke();
           yPosition += 15;
           doc.fontSize(12).font('Helvetica-Bold');
           doc.text('Refund Amount:', 320, yPosition);
-          doc.text(`$${returnData.refundAmount}`, 480, yPosition, { align: 'right' });
+          doc.text(`inr ${returnData.refundAmount}`, 480, yPosition, { align: 'right' });
         }
 
         // Reason
@@ -237,18 +253,28 @@ export class PDFService {
         const detailsStartY = doc.y;
         doc.fontSize(10).font('Helvetica');
         doc.text(`Invoice No: ${order.orderNumber}`, 350, detailsStartY, { align: 'right' });
-        doc.text(`Date: ${new Date(order.createdAt).toLocaleString('en-IN', { 
-          day: '2-digit', 
-          month: 'short', 
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        })}`, 350, detailsStartY + 15, { align: 'right' });
+        doc.text(`Date: ${order.date
+    ? (typeof order.date === 'string'
+        ? order.date
+        : order.date.toISOString()
+      )
+        .replace('T', ' ')
+        .replace('Z', '')
+    : 'N/A'}`, 350, detailsStartY + 15, { align: 'right' });
         doc.text(`Payment: ${(order.paymentMethod || 'cash').replace(/_/g, ' ').toUpperCase()}`, 350, detailsStartY + 30, { align: 'right' });
+        
+        // Show payment breakdown if payment method is mixed
+        if (order.paymentMethod === 'mixed' && order.payments && order.payments.length > 0) {
+          let paymentY = detailsStartY + 45; // Start below the payment method line
+          order.payments.forEach((payment, index) => {
+            doc.text(`${payment.paymentMethod.replace(/_/g, ' ').toUpperCase()}: inr ${parseFloat(payment.amount).toFixed(2)}`, 350, paymentY, { align: 'right' });
+            paymentY += 15; // Move down for next payment method
+          });
+        }
 
         // Customer details (left side)
         doc.y = detailsStartY;
-        this.addCustomerInfo(doc, order.customerName, order.customerEmail, order.customerPhone);
+        this.addCustomerInfo(doc, order.customerName, order.customerEmail || undefined, order.customerPhone || undefined);
         
         doc.moveDown(2);
 
@@ -271,17 +297,46 @@ export class PDFService {
           doc.text(item.productName, 50, yPosition, { width: 140 });
           doc.text(item.sku, 200, yPosition);
           doc.text(item.quantity.toString(), 320, yPosition);
-          doc.text(`$${item.unitPrice}`, 380, yPosition);
-          doc.text(`$${item.subtotal}`, 480, yPosition, { align: 'right' });
+          doc.text(`inr ${item.unitPrice}`, 380, yPosition);
+          doc.text(`inr ${item.subtotal}`, 480, yPosition, { align: 'right' });
           yPosition += 25;
         });
 
-        // Total
-        doc.moveTo(50, yPosition).lineTo(550, yPosition).stroke();
-        yPosition += 15;
-        doc.fontSize(14).font('Helvetica-Bold');
-        doc.text('GRAND TOTAL:', 320, yPosition);
-        doc.text(`$${order.totalAmount}`, 480, yPosition, { align: 'right' });
+        // Discount information if applicable
+        if (order.discountAmount && order.discountAmount !== null && order.discountAmount !== undefined && parseFloat(order.discountAmount.toString()) > 0) {
+          // Subtotal
+          doc.text('Subtotal:', 320, yPosition);
+          doc.text(`inr ${parseFloat((order.subTotal?.toString() || '0')).toFixed(2)}`, 480, yPosition, { align: 'right' });
+          yPosition += 20;
+          
+          // Discount details
+          doc.fontSize(12).font('Helvetica-Bold');
+          if (order.discountPercentage && order.discountPercentage !== null && order.discountPercentage !== undefined && parseFloat(order.discountPercentage.toString()) > 0) {
+            doc.text(`Discount (${parseFloat(order.discountPercentage.toString()).toFixed(2)}%):`, 320, yPosition);
+          } else {
+            doc.text('Discount:', 320, yPosition);
+          }
+          doc.text(`-inr ${parseFloat(order.discountAmount.toString()).toFixed(2)}`, 480, yPosition, { align: 'right' });
+          yPosition += 25;
+          
+          // Final total after discount
+          doc.moveTo(50, yPosition).lineTo(550, yPosition).stroke();
+          yPosition += 15;
+          
+          doc.fontSize(14).font('Helvetica-Bold');
+          doc.text('TOTAL AFTER DISCOUNT:', 320, yPosition);
+          doc.text(`inr ${Math.floor(parseFloat(order.totalAmount.toString()))}`, 480, yPosition, { align: 'right' });
+          
+          // Reset font back to normal for subsequent text
+          doc.fontSize(10).font('Helvetica');
+        } else {
+          // Total
+          doc.moveTo(50, yPosition).lineTo(550, yPosition).stroke();
+          yPosition += 15;
+          doc.fontSize(14).font('Helvetica-Bold');
+          doc.text('GRAND TOTAL:', 320, yPosition);
+          doc.text(`inr ${Math.floor(parseFloat(order.totalAmount.toString()))}`, 480, yPosition, { align: 'right' });
+        }
 
         // Amount in words (optional - you can implement this)
         yPosition += 25;

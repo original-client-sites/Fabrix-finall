@@ -10,9 +10,9 @@ import {
   returns,
   returnItems,
   stockMovements,
-  stockStats,
   discountCodes,
   accounts,
+  paymentDetails,
   insertProductSchema,
   insertOrderSchema,
   insertOrderItemSchema,
@@ -20,7 +20,9 @@ import {
   insertReturnItemSchema,
   insertStockMovementSchema,
   insertDiscountCodeSchema,
-} from "@shared/schema";
+  insertPaymentDetailSchema,
+  type DiscountCode,
+} from "@shared/schema.mysql";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { nanoid } from "nanoid";
@@ -28,6 +30,11 @@ import { log } from "./log";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { emailService } from "./email-service";
+
+// Extend global namespace for temporary file storage
+declare global {
+  var tempFiles: Record<string, { buffer: Buffer; fileName: string; mimeType: string }> | undefined;
+}
 
 // Configure multer for file uploads (in-memory storage)
 const upload = multer({
@@ -270,8 +277,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const orders = await storage.getOrders();
       res.json(orders);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch orders" });
+    } catch (error: any) {
+      console.error('Error fetching orders:', error);
+      res.status(500).json({ error: `Failed to fetch orders: ${error.message || 'Unknown error'}` });
     }
   });
 
@@ -282,8 +290,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Order not found" });
       }
       res.json(order);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch order" });
+    } catch (error: any) {
+      console.error('Error fetching order:', error);
+      res.status(500).json({ error: `Failed to fetch order: ${error.message || 'Unknown error'}` });
     }
   });
 
@@ -291,8 +300,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const orders = await storage.getOrdersByCustomerEmail(req.params.email);
       res.json(orders);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch orders" });
+    } catch (error: any) {
+      console.error('Error fetching orders by customer email:', error);
+      res.status(500).json({ error: `Failed to fetch orders: ${error.message || 'Unknown error'}` });
     }
   });
 
@@ -309,6 +319,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const parsedOrder = insertOrderSchema.safeParse(orderData);
       if (!parsedOrder.success) {
         const error = fromZodError(parsedOrder.error);
+        console.error('Order validation error:', error.message);
         return res.status(400).json({ error: error.message });
       }
 
@@ -321,6 +332,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const parsedItems = orderItemsSchema.safeParse(items);
       if (!parsedItems.success) {
         const error = fromZodError(parsedItems.error);
+        console.error('Order items validation error:', error.message);
         return res.status(400).json({ error: error.message });
       }
 
@@ -331,8 +343,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const order = await storage.createOrder(parsedOrder.data, parsedItems.data);
       res.status(201).json(order);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to create order" });
+    } catch (error: any) {
+      console.error('Error creating order:', error);
+      res.status(500).json({ error: `Failed to create order: ${error.message || 'Unknown error'}` });
     }
   });
 
@@ -402,27 +415,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Stock stats routes
-  app.get("/api/stock-stats", async (_req, res) => {
+  app.get("/api/todays-earnings", async (_req, res) => {
     try {
-      const stats = await storage.getStockStats();
-      res.json(stats);
+      const earnings = await storage.getTodaysEarnings();
+      res.json(earnings);
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch stock stats" });
+      console.error('Error fetching today\'s earnings:', error);
+      res.status(500).json({ error: "Failed to fetch today's earnings" });
     }
   });
 
-  app.get("/api/stock-stats/:productId", async (req, res) => {
-    try {
-      const stats = await storage.getStockStatsByProduct(req.params.productId);
-      if (!stats) {
-        return res.status(404).json({ error: "Stock stats not found" });
-      }
-      res.json(stats);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch stock stats" });
-    }
-  });
+  // Stock stats routes (temporarily disabled - method not implemented)
+  // app.get("/api/stock-stats", async (_req, res) => {
+  //   try {
+  //     const stats = await storage.getStockStats();
+  //     res.json(stats);
+  //   } catch (error) {
+  //     res.status(500).json({ error: "Failed to fetch stock stats" });
+  //   }
+  // });
+
+  // app.get("/api/stock-stats/:productId", async (req, res) => {
+  //   try {
+  //     const stats = await storage.getStockStatsByProduct(req.params.productId);
+  //     if (!stats) {
+  //       return res.status(404).json({ error: "Stock stats not found" });
+  //     }
+  //     res.json(stats);
+  //   } catch (error) {
+  //     res.status(500).json({ error: "Failed to fetch stock stats" });
+  //   }
+  // });
 
   // Return routes
   app.get("/api/returns", async (_req, res) => {
@@ -470,50 +493,123 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('Checking store credit creation:', {
         rawCreditAmount: returnData.creditAmount,
         parsedCreditAmount: creditAmount,
-        hasEmail: !!returnData.customerEmail,
-        shouldCreate: creditAmount > 0 && returnData.customerEmail
+        hasOrderNumber: !!returnData.orderNumber,
+        orderNumber: returnData.orderNumber,
+        shouldCreate: creditAmount > 0 && returnData.orderNumber
       });
 
-      if (creditAmount > 0 && returnData.customerEmail) {
-        const code = `CREDIT-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-        const expiresAt = new Date();
-        expiresAt.setFullYear(expiresAt.getFullYear() + 1); // 1 year expiry
-
-        console.log('Creating discount code for store credit:', {
-          code,
-          amount: creditAmount.toFixed(2),
-          email: returnData.customerEmail
+      if (creditAmount > 0 && returnData.orderNumber) {
+        console.log('Processing store credit for return:', {
+          creditAmount: creditAmount.toFixed(2),
+          email: returnData.customerEmail,
+          customerName: returnData.customerName,
+          customerPhone: returnData.customerPhone,
         });
 
         try {
-          const discountCode = await storage.createDiscountCode({
-            code,
-            customerEmail: returnData.customerEmail,
-            amount: creditAmount.toFixed(2),
-            expiresAt,
+          // First, check if there are existing discount codes for this customer that can be updated
+          const existingCodes = await storage.getDiscountCodes(returnData.customerName || '');
+          
+          // Filter to active codes (not expired and not fully used)
+          const activeCodes = existingCodes.filter(code => {
+            const now = new Date();
+            const expiresAt = code.expiresAt ? new Date(code.expiresAt) : null;
+            const isExpired = expiresAt && expiresAt < now;
+            const isFullyUsed = parseFloat(code.amount) <= 0.01; // Consider as fully used if amount is very small
+            return !isExpired && !isFullyUsed;
           });
-
-          console.log('Discount code created successfully:', {
-            id: discountCode.id,
-            code: discountCode.code,
-            amount: discountCode.amount
-          });
-
-          // Send email notification
-          try {
-            await emailService.sendDiscountCode(
-              returnData.customerEmail,
-              code,
-              creditAmount.toFixed(2),
-              expiresAt
-            );
-            console.log('Email notification sent successfully');
-          } catch (emailError) {
-            console.error('Failed to send discount code email:', emailError);
+          
+          let remainingCreditAmount = creditAmount;
+          
+          // Update the first existing code if possible, otherwise create a new one
+          // If there are existing codes, add the new credit to the first one
+          if (activeCodes.length > 0) {
+            const codeToUpdate = activeCodes[0]; // Take the first active code
+            const currentAmount = parseFloat(codeToUpdate.amount);
+            const newAmount = currentAmount + remainingCreditAmount;
+            
+            // Update the existing code with the new amount
+            await db.update(discountCodes)
+              .set({ amount: newAmount.toFixed(2) })
+              .where(eq(discountCodes.id, codeToUpdate.id));
+              
+            console.log('Updated existing discount code:', {
+              id: codeToUpdate.id,
+              code: codeToUpdate.code,
+              oldAmount: codeToUpdate.amount,
+              newAmount: newAmount.toFixed(2)
+            });
+            
+            remainingCreditAmount = 0; // All credit has been added to existing code
           }
-        } catch (discountError) {
-          console.error('Failed to create discount code:', discountError);
-          console.error('Discount code error details:', discountError);
+          
+          // If there's still remaining credit amount, create a new discount code
+          if (remainingCreditAmount > 0) {
+            const code = `CREDIT-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+            const expiresAt = new Date();
+            expiresAt.setFullYear(expiresAt.getFullYear() + 1); // 1 year expiry
+
+            console.log('Creating new discount code for remaining store credit:', {
+              code,
+              amount: remainingCreditAmount.toFixed(2),
+              email: returnData.customerEmail,
+              customerName: returnData.customerName,
+              customerPhone: returnData.customerPhone,
+            });
+
+            const discountCode = await storage.createDiscountCode({
+              code,
+              customerEmail: returnData.customerEmail || '',
+              customerName: returnData.customerName || '',
+              customerPhone: returnData.customerPhone || '',
+              amount: remainingCreditAmount.toFixed(2),
+              expiresAt,
+            });
+
+            console.log('New discount code created successfully:', {
+              id: discountCode.id,
+              code: discountCode.code,
+              amount: discountCode.amount
+            });
+          } else {
+            console.log('All store credit added to existing codes, no new code needed');
+          }
+
+          // Send email notification if email is provided
+          if (returnData.customerEmail && returnData.customerEmail !== '') {
+            try {
+              // Calculate total available credit for the customer after this update
+              const updatedCodes = await storage.getDiscountCodes(returnData.customerName || '');
+              const totalAvailableCredit = updatedCodes.reduce((sum, code) => sum + parseFloat(code.amount), 0);
+              
+              const expiresAt = new Date();
+              expiresAt.setFullYear(expiresAt.getFullYear() + 1); // Use same expiry for email
+              
+              await emailService.sendDiscountCode(
+                returnData.customerEmail,
+                'Store Credit Update',
+                totalAvailableCredit.toFixed(2),
+                expiresAt
+              );
+              console.log('Email notification sent successfully');
+            } catch (emailError) {
+              console.error('Failed to send discount code email:', emailError);
+            }
+          }
+        } catch (discountError: any) {
+          console.error('Failed to process discount code:', discountError);
+          console.error('Discount code error details:', {
+            message: discountError.message,
+            stack: discountError.stack,
+            code: discountError.code,
+            name: discountError.name
+          });
+          // Send error response to frontend
+          return res.status(500).json({ 
+            message: 'Return created successfully, but failed to process store credit', 
+            error: discountError.message,
+            returnId: newReturn.id
+          });
         }
       } else {
         console.log('Skipping discount code creation:', {
@@ -560,8 +656,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Discount code routes
   app.get("/api/discount-codes", async (req, res) => {
     try {
-      const customerEmail = req.query.customerEmail as string | undefined;
-      const codes = await storage.getDiscountCodes(customerEmail);
+      const customerIdentifier = req.query.customer as string | undefined;
+      let codes: DiscountCode[] = [];
+      
+      if (customerIdentifier) {
+        codes = await storage.getDiscountCodes(customerIdentifier);
+      } else {
+        codes = await storage.getAllDiscountCodes();
+      }
+      
       res.json(codes);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch discount codes" });
@@ -624,6 +727,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete discount code" });
+    }
+  });
+
+  // Payment Details routes
+  app.get("/api/payment-details", async (req, res) => {
+    try {
+      const orderId = req.query.orderId as string | undefined;
+      if (!orderId) {
+        return res.status(400).json({ error: "Order ID is required" });
+      }
+      const payments = await storage.getPaymentDetails(orderId);
+      res.json(payments);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch payment details" });
+    }
+  });
+
+  app.get("/api/orders/:id/payments", async (req, res) => {
+    try {
+      const payments = await storage.getPaymentsByOrder(req.params.id);
+      res.json(payments);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch payments for order" });
+    }
+  });
+
+  app.get("/api/orders/:id/total-paid", async (req, res) => {
+    try {
+      const total = await storage.getTotalPaidForOrder(req.params.id);
+      res.json({ total });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to calculate total paid for order" });
+    }
+  });
+
+  app.post("/api/payment-details", async (req, res) => {
+    try {
+      const parsed = insertPaymentDetailSchema.safeParse(req.body);
+      if (!parsed.success) {
+        const error = fromZodError(parsed.error);
+        return res.status(400).json({ error: error.message });
+      }
+
+      const payment = await storage.createPaymentDetail(parsed.data);
+      res.status(201).json(payment);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create payment detail" });
     }
   });
 
@@ -695,6 +845,146 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Return invoice generation error:', error);
       res.status(500).json({ error: "Failed to generate return invoice" });
+    }
+  });
+
+  // WhatsApp file send endpoint - generates downloadable invoice for WhatsApp Desktop
+  app.post("/api/whatsapp/send-file", upload.single("file"), async (req, res) => {
+    try {
+      const { phoneNumber, message, orderId } = req.body;
+      
+      if (!phoneNumber) {
+        return res.status(400).json({ error: "Phone number is required" });
+      }
+      
+      if (!message) {
+        return res.status(400).json({ error: "Message is required" });
+      }
+      
+      if (!orderId) {
+        return res.status(400).json({ error: "Order ID is required" });
+      }
+      
+      // Generate the invoice
+      const order = await storage.getOrder(orderId);
+      if (!order) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+      
+      const {pdfService } = await import('./pdf-service');
+      const pdfBuffer = await pdfService.generateInvoice(order);
+      const fileName = `invoice-${order.orderNumber}.pdf`;
+      
+      // Create a permanent download URL for the invoice
+      // WhatsApp Desktop will be able to automatically detect this file
+      const downloadUrl = `${req.protocol}://${req.get('host')}/api/whatsapp/download/${orderId}`;
+      
+      // Store the file in global temp storage for direct access
+      const fileUrl = `/api/whatsapp/download/${orderId}`;
+      global.tempFiles = global.tempFiles || {};
+      global.tempFiles[fileUrl] = {
+        buffer: pdfBuffer,
+        fileName: fileName,
+        mimeType: 'application/pdf'
+      };
+      
+      // Prepare WhatsApp message in requested format
+      const phoneNumberClean = phoneNumber.replace(/[^0-9]/g, '');
+      const formattedTotal = Math.floor(parseFloat(order.totalAmount.toString())).toLocaleString('en-IN');
+      const whatsappMessage = `Hello ${order.customerName},
+
+Thanks for visiting Fabrix and shopping with us! 👕😊
+
+Your invoice for order #${order.orderNumber} is attached here.
+Total: ₹${formattedTotal}
+
+📍 SUPER MALL-2, FF/152, Infocity, Gandhinagar, Gujarat 382007
+
+Thanks again for your purchase—hope to see you again soon! 🙌`;
+      const encodedMessage = encodeURIComponent(whatsappMessage);
+      
+      // Use WhatsApp Web URL scheme with file attachment parameter
+      const whatsappUrl = `https://wa.me/${phoneNumberClean}?text=${encodedMessage}&file=${encodeURIComponent(downloadUrl)}`;
+      
+      res.json({
+        success: true,
+        whatsappUrl: whatsappUrl,
+        downloadUrl: downloadUrl,
+        fileName: fileName,
+        orderNumber: order.orderNumber
+      });
+    } catch (error) {
+      console.error('WhatsApp file send error:', error);
+      res.status(500).json({ error: "Failed to send WhatsApp file" });
+    }
+  });
+
+  // WhatsApp invoice download endpoint
+  app.get("/api/whatsapp/download/:orderId", async (req, res) => {
+    try {
+      const fileUrl = `/api/whatsapp/download/${req.params.orderId}`;
+      
+      if (!global.tempFiles || !global.tempFiles[fileUrl]) {
+        // Generate the invoice on-the-fly if not in cache
+        const order = await storage.getOrder(req.params.orderId);
+        if (!order) {
+          return res.status(404).json({ error: "Order not found" });
+        }
+        
+        const {pdfService } = await import('./pdf-service');
+        const pdfBuffer = await pdfService.generateInvoice(order);
+        const fileName = `invoice-${order.orderNumber}.pdf`;
+        
+        global.tempFiles = global.tempFiles || {};
+        global.tempFiles[fileUrl] = {
+          buffer: pdfBuffer,
+          fileName: fileName,
+          mimeType: 'application/pdf'
+        };
+      }
+      
+      const fileData = global.tempFiles[fileUrl];
+      
+      // Set proper headers for file download
+      res.setHeader('Content-Type', fileData.mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${fileData.fileName}"`);
+      res.setHeader('Content-Length', fileData.buffer.length);
+      
+      res.send(fileData.buffer);
+      
+      // Optional: Clean up the temporary file after 5 minutes
+      setTimeout(() => {
+        if (global.tempFiles && global.tempFiles[fileUrl]) {
+          delete global.tempFiles[fileUrl];
+        }
+      }, 5 * 60 * 1000); // 5 minutes
+      
+    } catch (error) {
+      console.error('WhatsApp invoice download error:', error);
+      res.status(500).json({ error: "Failed to download invoice" });
+    }
+  });
+
+  // Temporary file download endpoint
+  app.get("/api/temp-file/:fileName", async (req, res) => {
+    try {
+      const tempUrl = `/api/temp-file/${req.params.fileName}`;
+      
+      if (!global.tempFiles || !global.tempFiles[tempUrl]) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      
+      const fileData = global.tempFiles[tempUrl];
+      
+      res.setHeader('Content-Type', fileData.mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${fileData.fileName}"`);
+      res.send(fileData.buffer);
+      
+      // Clean up the temporary file after sending
+      delete global.tempFiles[tempUrl];
+    } catch (error) {
+      console.error('Temporary file download error:', error);
+      res.status(500).json({ error: "Failed to download temporary file" });
     }
   });
 

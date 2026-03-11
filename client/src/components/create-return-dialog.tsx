@@ -4,7 +4,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { X, Package, QrCode, Search, Clock } from "lucide-react";
 import { format } from "date-fns";
-import { formatInIST } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -67,6 +66,7 @@ export function CreateReturnDialog({ open, onOpenChange, order }: CreateReturnDi
       orderNumber: "",
       customerName: "",
       customerEmail: "",
+      customerPhone: "",
       status: "pending",
       paymentMethod: "cash",
       reason: "",
@@ -82,6 +82,7 @@ export function CreateReturnDialog({ open, onOpenChange, order }: CreateReturnDi
       form.setValue("orderNumber", order.orderNumber);
       form.setValue("customerName", order.customerName);
       form.setValue("customerEmail", order.customerEmail || "");
+      form.setValue("customerPhone", order.customerPhone || "");
       setReturnItems(order.items.map(item => ({
         productId: item.productId,
         productName: item.productName,
@@ -95,19 +96,32 @@ export function CreateReturnDialog({ open, onOpenChange, order }: CreateReturnDi
 
   const createReturnMutation = useMutation({
     mutationFn: async (data: InsertReturn) => {
-      return await apiRequest("POST", "/api/returns", data);
+      const response = await apiRequest("POST", "/api/returns", data);
+      return await response.json();
     },
-    onSuccess: () => {
+    onSuccess: (responseData) => {
       queryClient.invalidateQueries({ queryKey: ["/api/returns"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/discount-codes"] });
+      
       const { credit } = calculateTotals();
-      toast({
-        title: "Return Created",
-        description: credit > 0
-          ? `Return has been created successfully. A store credit discount code for $${credit.toFixed(2)} has been sent to the customer's email.`
-          : "Return has been created successfully.",
-      });
+      
+      // Check if there was a partial success (return created but discount code failed)
+      if (responseData?.message?.includes('Return created successfully, but failed to create store credit')) {
+        toast({
+          title: "Return Created with Warning",
+          description: `Return was created successfully, but store credit creation failed: ${responseData.error}. The return ID is ${responseData.returnId}.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Return Created",
+          description: credit > 0
+            ? `Return has been created successfully. A store credit discount code for ₹{credit.toFixed(2)} has been sent to the customer's email.`
+            : "Return has been created successfully.",
+        });
+      }
+      
       onOpenChange(false);
       form.reset();
     },
@@ -293,7 +307,7 @@ export function CreateReturnDialog({ open, onOpenChange, order }: CreateReturnDi
                       <div className="flex-1">
                         <p className="font-medium">{item.productName}</p>
                         <p className="text-sm text-muted-foreground">{item.sku}</p>
-                        <p className="text-sm">Price: ${item.unitPrice}</p>
+                        <p className="text-sm">Price: ₹{item.unitPrice}</p>
                       </div>
 
                       <div className="flex items-center gap-3">
@@ -454,34 +468,34 @@ export function CreateReturnDialog({ open, onOpenChange, order }: CreateReturnDi
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Return Value:</span>
-                        <span className="font-medium">${totalReturnValue.toFixed(2)}</span>
+                        <span className="font-medium">₹{totalReturnValue.toFixed(2)}</span>
                       </div>
                       {totalExchangeValue > 0 && (
                         <>
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Exchange Value:</span>
-                            <span className="font-medium">${totalExchangeValue.toFixed(2)}</span>
+                            <span className="font-medium">₹{totalExchangeValue.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between pt-2 border-t">
                             {refund > 0 ? (
                               <>
                                 <span className="font-semibold">Refund Amount:</span>
-                                <span className="font-semibold text-green-600">${refund.toFixed(2)}</span>
+                                <span className="font-semibold text-green-600">₹{refund.toFixed(2)}</span>
                               </>
                             ) : credit > 0 ? (
                               <>
                                 <span className="font-semibold">Store Credit (Future Discount):</span>
-                                <span className="font-semibold text-blue-600">${credit.toFixed(2)}</span>
+                                <span className="font-semibold text-blue-600">₹{credit.toFixed(2)}</span>
                               </>
                             ) : additionalPayment > 0 ? (
                               <>
                                 <span className="font-semibold">Payable Account (Customer Owes):</span>
-                                <span className="font-semibold text-red-600">${additionalPayment.toFixed(2)}</span>
+                                <span className="font-semibold text-red-600">₹{additionalPayment.toFixed(2)}</span>
                               </>
                             ) : (
                               <>
                                 <span className="font-semibold">Even Exchange:</span>
-                                <span className="font-semibold">$0.00</span>
+                                <span className="font-semibold">₹0.00</span>
                               </>
                             )}
                           </div>
@@ -490,7 +504,7 @@ export function CreateReturnDialog({ open, onOpenChange, order }: CreateReturnDi
                       {totalExchangeValue === 0 && (
                         <div className="flex justify-between pt-2 border-t">
                           <span className="font-semibold">Refund Amount:</span>
-                          <span className="font-semibold text-green-600">${totalReturnValue.toFixed(2)}</span>
+                          <span className="font-semibold text-green-600">₹{totalReturnValue.toFixed(2)}</span>
                         </div>
                       )}
                     </div>
@@ -507,7 +521,7 @@ export function CreateReturnDialog({ open, onOpenChange, order }: CreateReturnDi
                 <Label htmlFor="paymentMethod">Payment Method for Additional Payment *</Label>
                 <Select
                   value={form.watch("paymentMethod")}
-                  onValueChange={(value) => form.setValue("paymentMethod", value)}
+                  onValueChange={(value) => form.setValue("paymentMethod", value as any as InsertReturn["paymentMethod"])}
                 >
                   <SelectTrigger id="paymentMethod">
                     <SelectValue placeholder="Select payment method" />
@@ -529,7 +543,7 @@ export function CreateReturnDialog({ open, onOpenChange, order }: CreateReturnDi
           <div className="border-t pt-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
               <Clock className="h-4 w-4" />
-              <span>Return Date: {formatInIST(new Date(), "MMM dd, yyyy HH:mm:ss")}</span>
+              <span>Return Date: {format(new Date(), "MMM dd, yyyy HH:mm:ss")}</span>
             </div>
             <div className="flex justify-end gap-3">
               <Button

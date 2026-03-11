@@ -4,7 +4,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { X, Plus, Search, Package, Scan, Clock } from "lucide-react";
 import { format } from "date-fns";
-import { formatInIST } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -39,8 +38,9 @@ import {
 } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { insertOrderSchema, type Product, type InsertOrder } from "@shared/schema";
+import { insertOrderSchema, type Product, type InsertOrder, type InsertPaymentDetail } from "@shared/schema";
 import { QRScannerDialog } from "./qr-scanner-dialog";
+import { PartialPaymentSelector } from "./partial-payment-selector";
 
 interface OrderItem {
   productId: string;
@@ -61,6 +61,9 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [discountMethod, setDiscountMethod] = useState<'none' | 'percentage' | 'amount' | 'total'>('none');
+  const [partialPayments, setPartialPayments] = useState<InsertPaymentDetail[]>([]);
+  const [showPartialPayment, setShowPartialPayment] = useState(false);
   const { toast } = useToast();
 
   // Auto-add scanned product
@@ -83,16 +86,55 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
       status: "pending",
       paymentMethod: undefined, // Initialize paymentMethod
       notes: "",
+      subTotal: "0",
+      discountPercentage: "",
+      discountAmount: "",
       totalAmount: "0",
     },
   });
 
+  // Watch for payment method changes to show partial payment selector
+  useEffect(() => {
+    const subscription = form.watch((value, { name }) => {
+      if (name === 'paymentMethod' && value.paymentMethod === 'mixed') {
+        setShowPartialPayment(true);
+      } else if (name === 'paymentMethod' && value.paymentMethod !== 'mixed') {
+        setShowPartialPayment(false);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [form]);
+
   const createMutation = useMutation({
-    mutationFn: async (data: InsertOrder & { items: OrderItem[] }) => {
-      return await apiRequest("POST", "/api/orders", data);
+    mutationFn: async (data: InsertOrder & { items: OrderItem[] } & { partialPayments?: InsertPaymentDetail[] }) => {
+      const { partialPayments: payments, ...orderData } = data;
+      const resultResponse = await apiRequest("POST", "/api/orders", orderData);
+      const result = await resultResponse.json(); // Get the actual order data
+      
+      // If there are partial payments, create them after the order is created
+      if (payments && payments.length > 0) {
+        console.log("DEBUG: Creating payment details for order:", result.id, "payments:", payments);
+        for (const payment of payments) {
+          const paymentResponse = await apiRequest("POST", "/api/payment-details", {
+            ...payment,
+            orderId: result.id // Use the created order's ID
+          });
+          
+          if (!paymentResponse.ok) {
+            const errorText = await paymentResponse.text();
+            console.error("Failed to create payment detail:", errorText);
+            throw new Error(`Failed to create payment detail: ${errorText}`);
+          }
+          
+          console.log("DEBUG: Payment detail created successfully:", await paymentResponse.json());
+        }
+      }
+      
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/returns"] }); // Also invalidate returns since they're used in order cards
       toast({
         title: "Success",
         description: "Order created successfully",
@@ -100,6 +142,8 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
       onOpenChange(false);
       form.reset();
       setOrderItems([]);
+      setPartialPayments([]); // Reset partial payments
+      setShowPartialPayment(false); // Hide partial payment section
     },
     onError: () => {
       toast({
@@ -183,8 +227,25 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
     setOrderItems(orderItems.filter((item) => item.productId !== productId));
   };
 
-  const calculateTotal = () => {
+  const calculateSubTotal = () => {
     return orderItems.reduce((sum, item) => sum + parseFloat(item.subtotal), 0).toFixed(2);
+  };
+
+  const calculateTotal = () => {
+    const subTotal = parseFloat(calculateSubTotal());
+    
+    if (discountMethod === 'percentage') {
+      const discountPercentage = parseFloat(form.watch('discountPercentage') || '0');
+      return (subTotal - (subTotal * discountPercentage / 100)).toFixed(2);
+    } else if (discountMethod === 'amount') {
+      const discountAmount = parseFloat(form.watch('discountAmount') || '0');
+      return (subTotal - discountAmount).toFixed(2);
+    } else if (discountMethod === 'total') {
+      // When setting total directly, we don't recalculate
+      return form.watch('totalAmount') || subTotal.toFixed(2);
+    } else {
+      return subTotal.toFixed(2);
+    }
   };
 
   const onSubmit = (data: InsertOrder) => {
@@ -210,16 +271,52 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
       return;
     }
 
-    const total = calculateTotal();
-    console.log("DEBUG: Payment method being sent to backend:", data.paymentMethod);
+    const subTotal = parseFloat(calculateSubTotal());
+    const finalTotal = parseFloat(calculateTotal());
     
-    // Ensure paymentMethod is properly formatted
+    let discountAmount = 0;
+    let discountPercentage = 0;
+    
+    if (discountMethod === 'percentage') {
+      discountPercentage = parseFloat(data.discountPercentage || '0');
+      discountAmount = (subTotal * discountPercentage) / 100;
+    } else if (discountMethod === 'amount') {
+      discountAmount = parseFloat(data.discountAmount || '0');
+      discountPercentage = (discountAmount / subTotal) * 100;
+    } else if (discountMethod === 'total') {
+      discountAmount = subTotal - finalTotal;
+      discountPercentage = (discountAmount / subTotal) * 100;
+    }
+    
     const orderData = {
       ...data,
-      paymentMethod: data.paymentMethod, // Make sure we're sending the selected payment method
-      totalAmount: total,
+      subTotal: subTotal.toFixed(2),
+      discountAmount: Math.floor(discountAmount).toString(),
+      discountPercentage: discountPercentage.toFixed(2),
+      totalAmount: Math.floor(finalTotal).toString(),
       items: orderItems,
     };
+    
+    // Handle partial payments if payment method is mixed
+    if (data.paymentMethod === 'mixed' && partialPayments.length > 0) {
+      // Calculate total from partial payments to verify it matches the order total
+      const totalFromPartialPayments = partialPayments.reduce(
+        (sum, payment) => sum + parseFloat(payment.amount), 
+        0
+      );
+      
+      if (Math.abs(totalFromPartialPayments - finalTotal) > 0.01) { // Allow small floating point differences
+        toast({
+          title: "Error",
+          description: `Partial payments total (₹${totalFromPartialPayments.toFixed(2)}) must equal order total (₹${finalTotal.toFixed(2)})`,
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Add partial payments to order data
+      (orderData as any).partialPayments = partialPayments;
+    }
     
     console.log("DEBUG: Final order data being sent:", orderData);
     createMutation.mutate(orderData);
@@ -321,8 +418,157 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                   <p className="text-sm text-destructive">{form.formState.errors.paymentMethod.message}</p>
                 )}
               </div>
+
+              {/* Discount Section */}
+              <div className="col-span-2 space-y-4 mt-4">
+                <h3 className="font-semibold text-lg">Discount Options</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <Label>Discount Type</Label>
+                    <Select
+                      value={discountMethod}
+                      onValueChange={(value: 'none' | 'percentage' | 'amount' | 'total') => {
+                        setDiscountMethod(value);
+                        if (value === 'none') {
+                          form.setValue('discountPercentage', '');
+                          form.setValue('discountAmount', '');
+                          form.setValue('totalAmount', calculateSubTotal());
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select discount type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No Discount</SelectItem>
+                        <SelectItem value="percentage">By Percentage</SelectItem>
+                        <SelectItem value="amount">By Fixed Amount</SelectItem>
+                        <SelectItem value="total">Set Total Amount</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="subTotal">Sub Total</Label>
+                    <Input
+                      id="subTotal"
+                      readOnly
+                      value={`₹${calculateSubTotal()}`}
+                      placeholder="Sub Total"
+                    />
+                  </div>
+                  
+                  {discountMethod === 'percentage' && (
+                    <div>
+                      <Label htmlFor="discountPercentage">Discount %</Label>
+                      <Input
+                        id="discountPercentage"
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="100"
+                        {...form.register("discountPercentage", {
+                          onChange: (e) => {
+                            let value = e.target.value;
+                            // Allow decimal percentages (no auto-modification)
+                            form.setValue('discountPercentage', value);
+                            if (value) {
+                              const subTotal = parseFloat(calculateSubTotal());
+                              const discountAmount = (subTotal * parseFloat(value)) / 100;
+                              form.setValue('discountAmount', discountAmount.toFixed(2));
+                              form.setValue('totalAmount', (subTotal - discountAmount).toFixed(2));
+                            }
+                          }
+                        })}
+                        placeholder="0"
+                      />
+                    </div>
+                  )}
+                  
+                  {discountMethod === 'amount' && (
+                    <div>
+                      <Label htmlFor="discountAmount">Discount Amount</Label>
+                      <Input
+                        id="discountAmount"
+                        type="number"
+                        step="1"
+                        min="0"
+                        max={parseFloat(calculateSubTotal())}
+                        {...form.register("discountAmount", {
+                          onChange: (e) => {
+                            let value = e.target.value;
+                            // Truncate decimal portion (convert paise to rupees) and show user the truncated value
+                            if (value) {
+                              const numValue = parseFloat(value);
+                              if (!isNaN(numValue)) {
+                                const truncatedValue = Math.floor(numValue).toString();
+                                if (truncatedValue !== value) {
+                                  e.target.value = truncatedValue;
+                                  value = truncatedValue;
+                                  // Show toast to inform user of auto-truncation
+                                  if (numValue !== Math.floor(numValue)) {
+                                    toast({
+                                      title: "Decimal Truncated",
+                                      description: `Discount amount ₹${numValue.toFixed(2)} truncated to ₹${truncatedValue} (paise removed)`
+                                    });
+                                  }
+                                }
+                              }
+                            }
+                            form.setValue('discountAmount', value);
+                            if (value) {
+                              const subTotal = parseFloat(calculateSubTotal());
+                              const discountPercent = (parseFloat(value) / subTotal) * 100;
+                              form.setValue('discountPercentage', discountPercent.toFixed(2));
+                              form.setValue('totalAmount', (subTotal - parseFloat(value)).toFixed(2));
+                            }
+                          }
+                        })}
+                        placeholder="0"
+                      />
+                    </div>
+                  )}
+                  
+                  {discountMethod === 'total' && (
+                    <div>
+                      <Label htmlFor="totalAmount">Final Total</Label>
+                      <Input
+                        id="totalAmount"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max={parseFloat(calculateSubTotal())}
+                        {...form.register("totalAmount", {
+                          onChange: (e) => {
+                            const value = e.target.value;
+                            form.setValue('totalAmount', value);
+                            if (value) {
+                              const subTotal = parseFloat(calculateSubTotal());
+                              const discountAmount = subTotal - parseFloat(value);
+                              const discountPercent = (discountAmount / subTotal) * 100;
+                              form.setValue('discountAmount', discountAmount.toFixed(2));
+                              form.setValue('discountPercentage', discountPercent.toFixed(2));
+                            }
+                          }
+                        })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
+
+          {/* Show partial payment selector when payment method is mixed */}
+          {showPartialPayment && (
+            <div className="space-y-4">
+              <PartialPaymentSelector 
+                totalAmount={parseFloat(calculateTotal())}
+                onPaymentsChange={setPartialPayments}
+              />
+            </div>
+          )}
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -372,7 +618,7 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                                   <p className="font-medium truncate">{product.productName}</p>
                                   <p className="text-xs text-muted-foreground">{product.sku}</p>
                                 </div>
-                                <p className="font-semibold">${product.price}</p>
+                                <p className="font-semibold">₹{product.price}</p>
                               </div>
                             </CommandItem>
                           ))}
@@ -437,7 +683,7 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                               </Button>
                             </div>
                             <p className="font-semibold w-20 text-right" data-testid={`text-subtotal-${index}`}>
-                              ${item.subtotal}
+                              ₹{item.subtotal}
                             </p>
                             <Button
                               type="button"
@@ -454,10 +700,26 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
                     ))}
                   </div>
                   <div className="p-4 bg-muted/50 border-t flex items-center justify-between">
-                    <p className="font-semibold text-lg">Total</p>
-                    <p className="font-bold text-2xl" data-testid="text-order-total">
-                      ${calculateTotal()}
-                    </p>
+                    <div>
+                      <p className="font-semibold text-lg">Subtotal</p>
+                      <p className="text-sm text-muted-foreground">₹{calculateSubTotal()}</p>
+                    </div>
+                    {discountMethod !== 'none' && (
+                      <div className="text-right">
+                        <p className="font-semibold text-lg">Discount</p>
+                        <p className="text-sm text-muted-foreground">
+                          {discountMethod === 'percentage' && `${form.watch('discountPercentage')}% off`}
+                          {discountMethod === 'amount' && `₹${form.watch('discountAmount')} off`}
+                          {discountMethod === 'total' && `₹${(parseFloat(calculateSubTotal()) - parseFloat(form.watch('totalAmount') || '0')).toFixed(2)} saved`}
+                        </p>
+                      </div>
+                    )}
+                    <div className="text-right">
+                      <p className="font-semibold text-lg">Total</p>
+                      <p className="font-bold text-2xl" data-testid="text-order-total">
+                        ₹{calculateTotal()}
+                      </p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -478,7 +740,7 @@ export function CreateOrderDialog({ open, onOpenChange, initialProduct }: Create
           <div className="border-t pt-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
               <Clock className="h-4 w-4" />
-              <span>Order Date: {formatInIST(new Date(), "MMM dd, yyyy HH:mm:ss")}</span>
+              <span>Order Date: {format(new Date(), "MMM dd, yyyy HH:mm:ss")}</span>
             </div>
             <div className="flex justify-end gap-3">
               <Button

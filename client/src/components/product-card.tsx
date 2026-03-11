@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Edit, Trash2, QrCode, Package, TrendingUp } from "lucide-react";
+import { Edit, Trash2, QrCode, Package, TrendingUp, ShoppingCart } from "lucide-react";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,7 @@ import { ProductDialog } from "./product-dialog";
 import { QRCodeDialog } from "./qr-code-dialog";
 import { DeleteProductDialog } from "./delete-product-dialog";
 import { StockMovementDialog } from "./stock-movement-dialog";
+import { PurchaseDialog } from "./purchase-dialog";
 import type { Product } from "@shared/schema";
 
 interface ProductCardProps {
@@ -19,6 +20,7 @@ export function ProductCard({ product, viewMode }: ProductCardProps) {
   const [isQRDialogOpen, setIsQRDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isStockDialogOpen, setIsStockDialogOpen] = useState(false);
+  const [isPurchaseDialogOpen, setIsPurchaseDialogOpen] = useState(false);
 
   const stockStatus =
     product.stockQuantity === 0
@@ -71,12 +73,21 @@ export function ProductCard({ product, viewMode }: ProductCardProps) {
               </div>
               <div className="flex items-center gap-3 flex-shrink-0">
                 <div className="text-right">
-                  <div className="text-2xl font-bold" data-testid={`text-price-${product.id}`}>${product.price}</div>
+                  <div className="text-2xl font-bold" data-testid={`text-price-${product.id}`}>₹{product.price}</div>
                   {product.costPrice && (
-                    <div className="text-xs text-muted-foreground">Cost: ${product.costPrice}</div>
+                    <div className="text-xs text-muted-foreground">Cost: ₹{product.costPrice}</div>
                   )}
                 </div>
                 <div className="flex gap-1">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setIsPurchaseDialogOpen(true)}
+                    data-testid={`button-purchase-${product.id}`}
+                    title="Record Purchase/Purchase Return"
+                  >
+                    <ShoppingCart className="h-4 w-4" />
+                  </Button>
                   <Button
                     variant="outline"
                     size="icon"
@@ -126,6 +137,11 @@ export function ProductCard({ product, viewMode }: ProductCardProps) {
           onOpenChange={setIsQRDialogOpen}
           product={product}
         />
+        <PurchaseDialog
+          open={isPurchaseDialogOpen}
+          onOpenChange={setIsPurchaseDialogOpen}
+          product={product}
+        />
         <StockMovementDialog
           open={isStockDialogOpen}
           onOpenChange={setIsStockDialogOpen}
@@ -172,21 +188,20 @@ export function ProductCard({ product, viewMode }: ProductCardProps) {
             <p data-testid={`text-brand-${product.id}`}>{product.brand} • {product.category}</p>
             <p>{product.size} • {product.color}</p>
           </div>
-          <div className="text-2xl font-bold" data-testid={`text-price-${product.id}`}>${product.price}</div>
+          <div className="text-2xl font-bold" data-testid={`text-price-${product.id}`}>₹{product.price}</div>
           {product.costPrice && (
-            <div className="text-xs text-muted-foreground mt-1">Cost: ${product.costPrice}</div>
+            <div className="text-xs text-muted-foreground mt-1">Cost: ₹{product.costPrice}</div>
           )}
         </CardContent>
         <CardFooter className="p-6 pt-0 flex gap-2">
+          
           <Button
             variant="outline"
-            size="sm"
-            className="flex-1"
+            size="icon"
             onClick={() => setIsStockDialogOpen(true)}
             data-testid={`button-stock-${product.id}`}
           >
-            <TrendingUp className="h-4 w-4 mr-2" />
-            Stock
+            <TrendingUp className="h-4 w-4" />
           </Button>
           <Button
             variant="outline"
@@ -196,13 +211,15 @@ export function ProductCard({ product, viewMode }: ProductCardProps) {
           >
             <QrCode className="h-4 w-4" />
           </Button>
-          <Button
+         <Button
             variant="outline"
-            size="icon"
-            onClick={() => setIsEditDialogOpen(true)}
-            data-testid={`button-edit-${product.id}`}
+            size="sm"
+            className="flex-1"
+            onClick={() => setIsPurchaseDialogOpen(true)}
+            data-testid={`button-purchase-${product.id}`}
           >
-            <Edit className="h-4 w-4" />
+            <ShoppingCart className="h-4 w-4 mr-2" />
+            Purchase
           </Button>
           <Button
             variant="outline"
@@ -223,6 +240,11 @@ export function ProductCard({ product, viewMode }: ProductCardProps) {
       <QRCodeDialog
         open={isQRDialogOpen}
         onOpenChange={setIsQRDialogOpen}
+        product={product}
+      />
+      <PurchaseDialog
+        open={isPurchaseDialogOpen}
+        onOpenChange={setIsPurchaseDialogOpen}
         product={product}
       />
       <StockMovementDialog

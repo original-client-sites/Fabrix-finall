@@ -1,4 +1,4 @@
-import { Package, ShoppingCart, TrendingUp, Ticket, BarChart3 } from "lucide-react";
+import { Package, ShoppingCart, TrendingUp, Ticket, BarChart3, FileText } from "lucide-react";
 import { Link, useRoute } from "wouter";
 import { cn } from "@/lib/utils";
 
@@ -8,6 +8,7 @@ export function Navigation() {
   const [isStock] = useRoute("/stock-history");
   const [isStoreCredits] = useRoute("/store-credits");
   const [isProfitLoss] = useRoute("/profit-loss");
+  const [isOrderSummary] = useRoute("/order-summary");
 
 
   return (
@@ -83,6 +84,19 @@ export function Navigation() {
                 >
                   <BarChart3 className="h-4 w-4" />
                   <span>Profit & Loss</span>
+                </div>
+              </Link>
+              <Link href="/order-summary">
+                <div
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors cursor-pointer",
+                    isOrderSummary
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  )}
+                >
+                  <FileText className="h-4 w-4" />
+                  <span>Order Summary</span>
                 </div>
               </Link>
             </div>

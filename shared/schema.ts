@@ -70,8 +70,11 @@ export const orders = pgTable("orders", {
   status: varchar("status", { length: 50 }).default("pending").notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).default("cash").notNull(),
   notes: text("notes"),
-  totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).notNull(),
-  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  subTotal: numeric("sub_total", { precision: 10, scale: 2 }),
+  discountPercentage: numeric("discount_percentage", { precision: 5, scale: 2 }),
+  discountAmount: integer("discount_amount"),
+  totalAmount: integer("total_amount").notNull(),
+  date: timestamp("date").default(sql`CURRENT_TIMESTAMP`),  // Changed column name to "date" but property stays as "createdAt"
 });
 
 export const insertOrderSchema = createInsertSchema(orders, {
@@ -79,8 +82,27 @@ export const insertOrderSchema = createInsertSchema(orders, {
   customerEmail: z.string().email().optional().or(z.literal("")),
   status: z.enum(["pending", "processing", "shipped", "delivered", "cancelled"]),
   paymentMethod: z.enum(["cash", "credit_card", "debit_card", "upi", "bank_transfer", "store_credit", "mixed"]),
+  subTotal: z.string().optional().transform(val => val === "" ? null : val).nullable(),
+  discountPercentage: z.string().optional().transform(val => {
+    if (val === "" || val === null || val === undefined) return null;
+    const num = parseFloat(val);
+    if (isNaN(num) || num < 0 || num > 100) {
+      throw new Error("Discount percentage must be a number between 0 and 100");
+    }
+    // Allow decimal percentages (no rounding/truncation)
+    return num.toString();
+  }).nullable(),
+  discountAmount: z.string().optional().transform(val => {
+    if (val === "" || val === null || val === undefined) return null;
+    const num = parseFloat(val);
+    if (isNaN(num) || num < 0) {
+      throw new Error("Discount amount must be a positive number");
+    }
+    // Truncate decimal portion (convert paise to rupees)
+    return Math.floor(num).toString();
+  }).nullable(),
   totalAmount: z.string().min(1, "Total amount is required"),
-}).omit({ id: true, createdAt: true, orderNumber: true });
+}).omit({ id: true, date: true, orderNumber: true });
 
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type Order = typeof orders.$inferSelect;
@@ -111,6 +133,7 @@ export type OrderItem = typeof orderItems.$inferSelect;
 
 export type OrderWithItems = Order & {
   items: OrderItem[];
+  payments?: PaymentDetail[];
 };
 
 /* ---------------------- STOCK MOVEMENTS ---------------------- */
@@ -138,31 +161,6 @@ export const insertStockMovementSchema = createInsertSchema(stockMovements, {
 export type InsertStockMovement = z.infer<typeof insertStockMovementSchema>;
 export type StockMovement = typeof stockMovements.$inferSelect;
 
-/* ---------------------- STOCK STATS ---------------------- */
-export const stockStats = pgTable("stock_stats", {
-  id: varchar("id", { length: 36 }).primaryKey(),
-  productId: varchar("product_id", { length: 36 }).notNull(),
-  productName: varchar("product_name", { length: 255 }).notNull(),
-  sku: varchar("sku", { length: 100 }).notNull(),
-  category: varchar("category", { length: 100 }).notNull(),
-  available: integer("available").default(0).notNull(),
-  sold: integer("sold").default(0).notNull(),
-  returned: integer("returned").default(0).notNull(),
-  purchased: integer("purchased").default(0).notNull(),
-  initialStock: integer("initial_stock").default(0).notNull(),
-  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
-});
-
-export const insertStockStatsSchema = createInsertSchema(stockStats, {
-  productId: z.string().min(1, "Product ID is required"),
-  productName: z.string().min(1, "Product name is required"),
-  sku: z.string().min(1, "SKU is required"),
-  category: z.string().min(1, "Category is required"),
-}).omit({ id: true, updatedAt: true });
-
-export type InsertStockStats = z.infer<typeof insertStockStatsSchema>;
-export type StockStats = typeof stockStats.$inferSelect;
-
 /* ---------------------- RETURNS ---------------------- */
 export const returns = pgTable("returns", {
   id: varchar("id", { length: 36 }).primaryKey(),
@@ -171,6 +169,7 @@ export const returns = pgTable("returns", {
   orderNumber: varchar("order_number", { length: 50 }).notNull(),
   customerName: varchar("customer_name", { length: 100 }).notNull(),
   customerEmail: varchar("customer_email", { length: 150 }),
+  customerPhone: varchar("customer_phone", { length: 20 }),
   status: varchar("status", { length: 50 }).default("pending").notNull(),
   reason: varchar("reason", { length: 255 }).notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).default("cash").notNull(),
@@ -185,6 +184,7 @@ export const returns = pgTable("returns", {
 export const insertReturnSchema = createInsertSchema(returns, {
   customerName: z.string().min(1, "Customer name is required"),
   customerEmail: z.string().email().optional().or(z.literal("")),
+  customerPhone: z.string().optional(),
   status: z.enum(["pending", "approved", "rejected", "completed"]),
   reason: z.string().min(1, "Return reason is required"),
   paymentMethod: z.enum(["cash", "credit_card", "debit_card", "upi", "bank_transfer", "store_credit", "mixed"]),
@@ -233,11 +233,45 @@ export type ReturnWithItems = Return & {
   items: ReturnItem[];
 };
 
+/* ---------------------- PAYMENT DETAILS ---------------------- */
+export const paymentDetails = pgTable("payment_details", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  orderId: varchar("order_id", { length: 36 }).notNull(),
+  paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  paymentDate: timestamp("payment_date").default(sql`CURRENT_TIMESTAMP`),
+  transactionId: varchar("transaction_id", { length: 255 }),
+  status: varchar("status", { length: 50 }).default("completed").notNull(),
+  notes: text("notes"),
+});
+
+export const insertPaymentDetailSchema = createInsertSchema(paymentDetails, {
+  orderId: z.string().min(1, "Order ID is required"),
+  paymentMethod: z.enum(["cash", "credit_card", "debit_card", "upi", "bank_transfer", "store_credit"]),
+  amount: z.string().min(1, "Amount is required"),
+  status: z.enum(["pending", "completed", "failed", "refunded"]),
+  transactionId: z.string().optional(),
+  notes: z.string().optional(),
+}).omit({ 
+  id: true, 
+  paymentDate: true 
+});
+
+export type InsertPaymentDetail = z.infer<typeof insertPaymentDetailSchema>;
+export type PaymentDetail = typeof paymentDetails.$inferSelect;
+
+export type OrderWithPayments = Order & {
+  items: OrderItem[];
+  payments: PaymentDetail[];
+};
+
 /* ---------------------- DISCOUNT CODES ---------------------- */
 export const discountCodes = pgTable("discount_codes", {
   id: varchar("id", { length: 36 }).primaryKey(),
   code: varchar("code", { length: 50 }).notNull(),
   customerEmail: varchar("customer_email", { length: 150 }).notNull(),
+  customerName: varchar("customer_name", { length: 100 }),
+  customerPhone: varchar("customer_phone", { length: 20 }),
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   isUsed: boolean("is_used").default(false),
   usedAt: timestamp("used_at"),
@@ -247,8 +281,16 @@ export const discountCodes = pgTable("discount_codes", {
 
 export const insertDiscountCodeSchema = createInsertSchema(discountCodes, {
   code: z.string().min(1, "Code is required"),
-  customerEmail: z.string().email("Valid email is required"),
-  amount: z.string().min(1, "Amount is required"),
+  customerEmail: z.string().email("Valid email is required").optional().or(z.literal("")),
+  customerName: z.string().optional(),
+  customerPhone: z.string().optional(),
+  amount: z.string().min(1, "Amount is required").transform(val => {
+    const num = parseFloat(val);
+    if (isNaN(num) || num < 0) {
+      throw new Error("Discount amount must be a positive number");
+    }
+    return val;
+  }),
   expiresAt: z.date().optional(),
 }).omit({ id: true, createdAt: true, isUsed: true, usedAt: true });
 

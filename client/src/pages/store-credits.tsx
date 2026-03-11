@@ -16,8 +16,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { DiscountCode } from "@shared/schema";
-import { format } from "date-fns";
-import { formatInIST } from "@/lib/utils";
+import { format, parseISO } from 'date-fns';
 import { CreateOrderDialog } from "@/components/create-order-dialog";
 import { UseCreditDialog } from "@/components/use-credit-dialog";
 
@@ -54,7 +53,9 @@ export default function StoreCredits() {
   const filteredCodes = discountCodes.filter((code) => {
     const matchesSearch =
       code.customerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      code.code.toLowerCase().includes(searchQuery.toLowerCase());
+      code.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (code.customerName && code.customerName.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (code.customerPhone && code.customerPhone.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesSearch;
   });
 
@@ -83,7 +84,7 @@ export default function StoreCredits() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by customer email or code..."
+                placeholder="Search by customer name, email, phone, or code..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -131,7 +132,9 @@ export default function StoreCredits() {
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          <TableHead>Customer Name</TableHead>
                           <TableHead>Customer Email</TableHead>
+                          <TableHead>Phone Number</TableHead>
                           <TableHead>Code</TableHead>
                           <TableHead>Credit Amount</TableHead>
                           <TableHead>Issued Date</TableHead>
@@ -143,7 +146,13 @@ export default function StoreCredits() {
                         {unusedCodes.map((code) => (
                           <TableRow key={code.id}>
                             <TableCell className="font-medium">
+                              {code.customerName || '-'}
+                            </TableCell>
+                            <TableCell>
                               {code.customerEmail}
+                            </TableCell>
+                            <TableCell>
+                              {code.customerPhone || '-'}
                             </TableCell>
                             <TableCell>
                               <code className="bg-muted px-2 py-1 rounded text-sm">
@@ -151,16 +160,16 @@ export default function StoreCredits() {
                               </code>
                             </TableCell>
                             <TableCell className="text-green-600 font-semibold">
-                              ${parseFloat(code.amount).toFixed(2)}
+                              ₹{parseFloat(code.amount).toFixed(2)}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {code.createdAt
-                                ? formatInIST(new Date(code.createdAt), "MMM dd, yyyy")
+                                ? format(typeof code.createdAt === 'string' ? parseISO(code.createdAt) : new Date(code.createdAt), "MMM dd, yyyy")
                                 : "-"}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {code.expiresAt
-                                ? formatInIST(new Date(code.expiresAt), "MMM dd, yyyy")
+                                ? format(typeof code.expiresAt === 'string' ? parseISO(code.expiresAt) : new Date(code.expiresAt), "MMM dd, yyyy")
                                 : "No expiry"}
                             </TableCell>
                             <TableCell className="text-right">
@@ -212,7 +221,9 @@ export default function StoreCredits() {
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          <TableHead>Customer Name</TableHead>
                           <TableHead>Customer Email</TableHead>
+                          <TableHead>Phone Number</TableHead>
                           <TableHead>Code</TableHead>
                           <TableHead>Credit Amount</TableHead>
                           <TableHead>Issued Date</TableHead>
@@ -224,7 +235,13 @@ export default function StoreCredits() {
                         {usedCodes.map((code) => (
                           <TableRow key={code.id} className="opacity-60">
                             <TableCell className="font-medium">
+                              {code.customerName || '-'}
+                            </TableCell>
+                            <TableCell>
                               {code.customerEmail}
+                            </TableCell>
+                            <TableCell>
+                              {code.customerPhone || '-'}
                             </TableCell>
                             <TableCell>
                               <code className="bg-muted px-2 py-1 rounded text-sm line-through">
@@ -232,16 +249,16 @@ export default function StoreCredits() {
                               </code>
                             </TableCell>
                             <TableCell className="text-muted-foreground">
-                              ${parseFloat(code.amount).toFixed(2)}
+                              ₹{parseFloat(code.amount).toFixed(2)}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {code.createdAt
-                                ? formatInIST(new Date(code.createdAt), "MMM dd, yyyy")
+                                ? format(typeof code.createdAt === 'string' ? parseISO(code.createdAt) : new Date(code.createdAt), "MMM dd, yyyy")
                                 : "-"}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {code.usedAt
-                                ? formatInIST(new Date(code.usedAt), "MMM dd, yyyy")
+                                ? format(typeof code.usedAt === 'string' ? parseISO(code.usedAt) : new Date(code.usedAt), "MMM dd, yyyy")
                                 : "-"}
                             </TableCell>
                             <TableCell className="text-right">

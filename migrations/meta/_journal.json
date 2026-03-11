@@ -5,36 +5,22 @@
     {
       "idx": 0,
       "version": "5",
-      "when": 1762408554424,
-      "tag": "0000_short_enchantress",
+      "when": 1769855558016,
+      "tag": "0000_spooky_guardian",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1769856227964,
+      "tag": "0001_dapper_daimon_hellstrom",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "5",
-      "when": 1762406894801,
-      "tag": "0002_clumsy_absorbing_man",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "5",
-      "when": 1763205521634,
-      "tag": "0003_mysterious_arachne",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "5",
-      "when": 1763270291065,
-      "tag": "0004_warm_miek",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "5",
-      "when": 1767958463381,
-      "tag": "0005_shallow_menace",
+      "when": 1769856661993,
+      "tag": "0002_colossal_swordsman",
       "breakpoints": true
     }
   ]

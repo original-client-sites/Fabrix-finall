@@ -3,11 +3,11 @@ import {
   orders,
   orderItems,
   stockMovements,
-  stockStats,
   returns,
   returnItems,
   discountCodes,
   accounts,
+  paymentDetails,
 } from "@shared/schema.mysql";
 import type {
   InsertProduct,
@@ -19,8 +19,7 @@ import type {
   OrderWithItems,
   StockMovement,
   InsertStockMovement,
-  StockStats,
-  InsertStockStats,
+
   Return,
   InsertReturn,
   ReturnItem,
@@ -28,10 +27,12 @@ import type {
   ReturnWithItems,
   DiscountCode,
   InsertDiscountCode,
+  PaymentDetail,
+  InsertPaymentDetail,
 } from "@shared/schema.mysql";
 import { randomUUID } from "crypto";
 import { nanoid } from "nanoid";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and } from "drizzle-orm";
 import { db } from "./db";
 
 
@@ -59,12 +60,9 @@ export interface IStorage {
   getStockMovements(productId?: string): Promise<StockMovement[]>;
   createStockMovement(movement: InsertStockMovement): Promise<StockMovement>;
   getLowStockProducts(threshold?: number): Promise<Product[]>;
+  getTodaysEarnings(): Promise<{ revenue: number; refundAmount: number; cost: number; profit: number; orderCount: number; returnCount: number; paymentMethodBreakdown: Record<string, { revenue: number; count: number; refunds: number; refundAmount: number }> }>;
 
-  // Stock Stats
-  getStockStats(): Promise<StockStats[]>;
-  getStockStatsByProduct(productId: string): Promise<StockStats | null>;
-  updateStockStats(productId: string, updates: Partial<StockStats>): Promise<StockStats | null>;
-  initializeStockStats(product: Product): Promise<StockStats>;
+
 
   // Returns
   getReturns(): Promise<ReturnWithItems[]>;
@@ -73,11 +71,21 @@ export interface IStorage {
   updateReturn(id: string, data: Partial<InsertReturn>): Promise<Return | null>;
 
   // Discount Codes
-  getDiscountCodes(customerEmail?: string): Promise<DiscountCode[]>;
+  getDiscountCodesByEmail(customerEmail: string): Promise<DiscountCode[]>;
+  getDiscountCodesByName(customerName: string): Promise<DiscountCode[]>;
+  getAllDiscountCodes(): Promise<DiscountCode[]>;
   getDiscountCode(code: string): Promise<DiscountCode | null>;
   createDiscountCode(data: InsertDiscountCode): Promise<DiscountCode>;
   useDiscountCode(code: string, amountUsed: string): Promise<{ updated: DiscountCode | null; wasDeleted: boolean; wasFound: boolean; error?: string }>;
   deleteDiscountCode(id: string): Promise<boolean>;
+
+  // Payment Details
+  getPaymentDetails(orderId: string): Promise<PaymentDetail[]>;
+  createPaymentDetail(payment: InsertPaymentDetail): Promise<PaymentDetail>;
+  updatePaymentDetail(id: string, payment: Partial<InsertPaymentDetail>): Promise<PaymentDetail | null>;
+  deletePaymentDetail(id: string): Promise<boolean>;
+  getPaymentsByOrder(orderId: string): Promise<PaymentDetail[]>;
+  getTotalPaidForOrder(orderId: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -134,20 +142,7 @@ export class DatabaseStorage implements IStorage {
     const productResult = await db.select().from(products).where(eq(products.id, id));
     const product = productResult[0];
 
-    await this.initializeStockStats(product);
-
-    if (product.stockQuantity > 0) {
-      await db.insert(stockMovements).values({
-        id: randomUUID(),
-        productId: product.id,
-        productName: product.productName,
-        sku: product.sku,
-        type: "in",
-        quantity: product.stockQuantity,
-        reason: "Initial Stock",
-        notes: "Initial stock added during product creation",
-      });
-    }
+    // Don't create stock movement here; it's handled in routes.ts to avoid duplication
 
     return {
       ...product,
@@ -157,6 +152,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateProduct(id: string, product: InsertProduct): Promise<Product | undefined> {
+    // Get the current product to compare stock quantities
+    const currentProduct = await this.getProduct(id);
+    if (!currentProduct) return undefined;
+    
     const productData: any = {
       galleryImages: product.galleryImages ? JSON.stringify(product.galleryImages) : null,
       tags: product.tags ? JSON.stringify(product.tags) : null,
@@ -175,6 +174,28 @@ export class DatabaseStorage implements IStorage {
 
     const result = await db.select().from(products).where(eq(products.id, id));
     if (result.length === 0) return undefined;
+    
+    // Handle stock quantity adjustment
+    if (product.stockQuantity !== undefined && product.stockQuantity !== currentProduct.stockQuantity) {
+      const stockDifference = product.stockQuantity - currentProduct.stockQuantity;
+      
+      if (stockDifference !== 0) {
+        // Create a stock movement record for the adjustment
+        await this.createStockMovement({
+          productId: id,
+          productName: currentProduct.productName,
+          sku: currentProduct.sku,
+          type: stockDifference > 0 ? 'in' : 'out',
+          quantity: Math.abs(stockDifference),
+          reason: stockDifference > 0 ? 'adjustment' : 'purchase return',
+          notes: `Stock adjustment from ${currentProduct.stockQuantity} to ${product.stockQuantity}`,
+        });
+        
+        // Stock quantity is updated directly in the products table
+        // Stock movements are tracked in the stock_movements table
+      }
+    }
+    
     return {
       ...result[0],
       galleryImages: result[0].galleryImages ? JSON.parse(result[0].galleryImages) : [],
@@ -184,7 +205,6 @@ export class DatabaseStorage implements IStorage {
 
   async deleteProduct(id: string): Promise<boolean> {
     try {
-      await db.delete(stockStats).where(eq(stockStats.productId, id));
       await db.delete(products).where(eq(products.id, id));
       return true;
     } catch (error: any) {
@@ -199,7 +219,8 @@ export class DatabaseStorage implements IStorage {
     return await Promise.all(
       allOrders.map(async (order) => {
         const items = await this.getOrderItems(order.id);
-        return { ...order, items };
+        const payments = await this.getPaymentsByOrder(order.id);
+        return { ...order, items, payments };
       })
     );
   }
@@ -209,7 +230,8 @@ export class DatabaseStorage implements IStorage {
     if (result.length === 0) return undefined;
 
     const items = await this.getOrderItems(id);
-    return { ...result[0], items };
+    const payments = await this.getPaymentsByOrder(id);
+    return { ...result[0], items, payments };
   }
 
   async getOrdersByCustomerEmail(email: string): Promise<OrderWithItems[]> {
@@ -217,7 +239,8 @@ export class DatabaseStorage implements IStorage {
     return await Promise.all(
       result.map(async (order) => {
         const items = await this.getOrderItems(order.id);
-        return { ...order, items };
+        const payments = await this.getPaymentsByOrder(order.id);
+        return { ...order, items, payments };
       })
     );
   }
@@ -226,10 +249,55 @@ export class DatabaseStorage implements IStorage {
     const id = randomUUID();
     const orderNumber = `ORD-${Date.now()}`;
 
+    // Calculate subtotal from items
+    const subtotal = items.reduce((sum, item) => sum + parseFloat(item.subtotal), 0);
+    
+    // Handle discount calculation
+    let finalTotal = subtotal;
+    let discountAmount = 0;
+    let discountPercentage = 0;
+    
+    // Apply discount based on the provided values
+    if (orderData.discountPercentage !== undefined && orderData.discountPercentage !== null && orderData.discountPercentage !== '') {
+      discountPercentage = parseFloat(orderData.discountPercentage);
+      discountAmount = (subtotal * discountPercentage) / 100;
+      finalTotal = subtotal - discountAmount;
+    } else if (orderData.discountAmount !== undefined && orderData.discountAmount !== null && orderData.discountAmount !== '') {
+      discountAmount = parseFloat(orderData.discountAmount);
+      finalTotal = subtotal - discountAmount;
+      discountPercentage = (discountAmount / subtotal) * 100;
+    } else if (orderData.totalAmount !== undefined && parseFloat(orderData.totalAmount) < subtotal) {
+      // If totalAmount is provided and less than subtotal, calculate discount from it
+      finalTotal = parseFloat(orderData.totalAmount);
+      discountAmount = subtotal - finalTotal;
+      discountPercentage = (discountAmount / subtotal) * 100;
+    } else {
+      // If no discount is applied, set total to subtotal
+      finalTotal = subtotal;
+    }
+    
+    // Ensure finalTotal is not negative and convert to integer
+    finalTotal = Math.max(0, finalTotal);
+    const finalTotalInt = Math.ceil(finalTotal* 100)/100;
+    const discountAmountInt = Math.floor(discountAmount);
+    
+    console.log('Order calculation details:', {
+      originalSubtotal: subtotal,
+      calculatedDiscountAmount: discountAmount,
+      calculatedTotal: finalTotal,
+      finalTotalInt,
+      discountAmountInt,
+      discountPercentage
+    });
+    
     await db.insert(orders).values({
       ...orderData,
       id,
       orderNumber,
+      subTotal: subtotal.toFixed(2),
+      discountAmount: discountAmountInt,
+      discountPercentage: discountPercentage.toFixed(2),
+      totalAmount: finalTotalInt,
     });
 
     const orderResult = await db.select().from(orders).where(eq(orders.id, id));
@@ -250,11 +318,9 @@ export class DatabaseStorage implements IStorage {
       const product = await this.getProduct(item.productId);
       if (product) {
         const newStockQuantity = product.stockQuantity - item.quantity;
-        await this.updateProduct(item.productId, {
-          ...product,
-          stockQuantity: newStockQuantity,
-          isFeatured: product.isFeatured ?? false,
-        });
+        await db.update(products)
+          .set({ stockQuantity: newStockQuantity })
+          .where(eq(products.id, item.productId));
 
         await this.createStockMovement({
           productId: item.productId,
@@ -266,13 +332,8 @@ export class DatabaseStorage implements IStorage {
           notes: `Order ${orderNumber}`,
         });
 
-        const stats = await this.getStockStatsByProduct(item.productId);
-        if (stats) {
-          await this.updateStockStats(item.productId, {
-            available: Math.max(0, newStockQuantity),
-            sold: stats.sold + item.quantity,
-          });
-        }
+        // Stock quantity is updated directly in the products table
+        // Stock movements are tracked in the stock_movements table
       }
     }
 
@@ -280,8 +341,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateOrder(id: string, insertOrder: InsertOrder): Promise<Order | undefined> {
+    // Transform integer values before updating
+    const updatedOrder = {
+      ...insertOrder,
+      totalAmount: insertOrder.totalAmount ? Math.floor(parseFloat(insertOrder.totalAmount.toString())) : undefined,
+      discountAmount: insertOrder.discountAmount ? Math.floor(parseFloat(insertOrder.discountAmount.toString())) : undefined,
+    };
+    
     await db.update(orders)
-      .set(insertOrder)
+      .set(updatedOrder)
       .where(eq(orders.id, id));
 
     const result = await db.select().from(orders).where(eq(orders.id, id));
@@ -308,46 +376,86 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createStockMovement(insertMovement: InsertStockMovement): Promise<StockMovement> {
-    const id = randomUUID();
-    await db.insert(stockMovements).values({
-      ...insertMovement,
-      id,
-    });
-
-    const movementResult = await db.select().from(stockMovements).where(eq(stockMovements.id, id));
-    const movement = movementResult[0];
-
-    const product = await this.getProduct(insertMovement.productId);
-    if (product) {
-      let newQuantity = product.stockQuantity;
-      if (insertMovement.type === "in") {
-        newQuantity += insertMovement.quantity;
-      } else if (insertMovement.type === "out") {
-        newQuantity -= insertMovement.quantity;
-      } else if (insertMovement.type === "adjustment") {
-        newQuantity = insertMovement.quantity;
+    // Only consolidate movements for 'adjustment' reason, not for 'Initial Stock'
+    // This prevents double counting during product creation while allowing consolidation for manual adjustments
+    let movement: StockMovement;
+    
+    if (insertMovement.reason === 'adjustment') {
+      // Check if there's already an adjustment movement record for this product
+      const existingAdjustment = await db.select().from(stockMovements)
+        .where(and(
+          eq(stockMovements.productId, insertMovement.productId),
+          eq(stockMovements.reason, 'adjustment')
+        ));
+      
+      if (existingAdjustment.length > 0) {
+        // Update existing adjustment record by adding the new quantity
+        const existingMovement = existingAdjustment[0];
+        const newQuantity = existingMovement.quantity + insertMovement.quantity;
+        
+        await db.update(stockMovements)
+          .set({
+            quantity: newQuantity,
+            notes: insertMovement.notes ? `${existingMovement.notes || ''} ${insertMovement.notes}`.trim() : existingMovement.notes,
+            createdAt: new Date(), // Update timestamp
+          })
+          .where(eq(stockMovements.id, existingMovement.id));
+        
+        // Get updated movement
+        const updatedMovementResult = await db.select().from(stockMovements)
+          .where(eq(stockMovements.id, existingMovement.id));
+        movement = updatedMovementResult[0];
+      } else {
+        // Create new adjustment record
+        const id = randomUUID();
+        await db.insert(stockMovements).values({
+          ...insertMovement,
+          id,
+        });
+        
+        const movementResult = await db.select().from(stockMovements).where(eq(stockMovements.id, id));
+        movement = movementResult[0];
       }
-
-      const finalQuantity = Math.max(0, newQuantity);
-      await this.updateProduct(insertMovement.productId, {
-        ...product,
-        stockQuantity: finalQuantity,
-        isFeatured: product.isFeatured ?? false,
+    } else {
+      // For all other reasons (like 'Initial Stock'), always create a new record
+      const id = randomUUID();
+      await db.insert(stockMovements).values({
+        ...insertMovement,
+        id,
       });
+      
+      const movementResult = await db.select().from(stockMovements).where(eq(stockMovements.id, id));
+      movement = movementResult[0];
+    }
 
-      const stats = await this.getStockStatsByProduct(insertMovement.productId);
-      if (stats) {
-        if (insertMovement.reason === 'purchase') {
-          await this.updateStockStats(insertMovement.productId, {
-            available: finalQuantity,
-            purchased: stats.purchased + insertMovement.quantity,
-          });
-        } else {
-          await this.updateStockStats(insertMovement.productId, {
-            available: finalQuantity,
-          });
-        }
-      }
+    // Use atomic update to avoid race conditions - this should always happen based on the new movement
+    if (insertMovement.type === "in") {
+      await db.update(products)
+        .set({
+          stockQuantity: sql`${products.stockQuantity} + ${insertMovement.quantity}`,
+        })
+        .where(eq(products.id, insertMovement.productId));
+    } else if (insertMovement.type === "out") {
+      await db.update(products)
+        .set({
+          stockQuantity: sql`${products.stockQuantity} - ${insertMovement.quantity}`,
+        })
+        .where(eq(products.id, insertMovement.productId));
+    } else if (insertMovement.type === "adjustment") {
+      await db.update(products)
+        .set({
+          stockQuantity: insertMovement.quantity,
+        })
+        .where(eq(products.id, insertMovement.productId));
+    }
+
+    // Get updated product after atomic update
+    const updatedProduct = await this.getProduct(insertMovement.productId);
+    if (updatedProduct) {
+      const finalQuantity = Math.max(0, updatedProduct.stockQuantity);
+      
+      // Stock movements are now tracked only in the stock_movements table
+      // Stock stats will be calculated on demand from stock movements
     }
 
     return movement;
@@ -365,6 +473,118 @@ export class DatabaseStorage implements IStorage {
       console.error('Error fetching low stock products:', error);
       return [];
     }
+  }
+
+  async getTodaysEarnings(): Promise<{ revenue: number; refundAmount: number; cost: number; profit: number; orderCount: number; returnCount: number; paymentMethodBreakdown: Record<string, { revenue: number; count: number; refunds: number; refundAmount: number }> }> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Get today's orders
+    const todaysOrders = await db.select().from(orders)
+      .where(and(
+        sql`${orders.date} >= ${today}`,
+        sql`${orders.date} < ${tomorrow}`
+      ));
+
+    // Get today's returns
+    const todaysReturns = await db.select().from(returns)
+      .where(and(
+        sql`${returns.createdAt} >= ${today}`,
+        sql`${returns.createdAt} < ${tomorrow}`
+      ));
+
+    // Get today's purchase accounts
+    const todaysAccounts = await db.select().from(accounts)
+      .where(and(
+        eq(accounts.transactionType, 'purchase'),
+        sql`${accounts.transactionDate} >= ${today}`,
+        sql`${accounts.transactionDate} < ${tomorrow}`
+      ));
+
+    // Get today's purchase returns from stock movements
+    const todaysPurchaseReturns = await db.select().from(stockMovements)
+      .where(and(
+        eq(stockMovements.type, 'out'),
+        sql`(${stockMovements.reason} = 'purchase return' OR ${stockMovements.reason} = 'supplier return')`,
+        sql`${stockMovements.createdAt} >= ${today}`,
+        sql`${stockMovements.createdAt} < ${tomorrow}`
+      ));
+
+    // Calculate revenue from orders (using integers)
+    const revenue = todaysOrders.reduce((sum, order) => {
+      return sum + Math.floor(parseFloat(order.totalAmount.toString()));
+    }, 0);
+
+    // Calculate refunds from returns (using integers)
+    const refundAmount = todaysReturns.reduce((sum, ret) => {
+      return sum + (ret.refundAmount ? Math.floor(parseFloat(ret.refundAmount.toString())) : 0);
+    }, 0);
+
+    // Calculate purchase costs (using integers)
+    const purchaseCost = todaysAccounts.reduce((sum, acc) => {
+      return sum + Math.floor(parseFloat(acc.cost.toString()));
+    }, 0);
+
+    // Calculate purchase return costs
+    const purchaseReturnCost = todaysPurchaseReturns.reduce((sum, m) => {
+      // We need to get the product to get cost price
+      return sum + (0 * m.quantity); // Placeholder - would need to join with products table
+    }, 0);
+
+    const cost = purchaseCost - purchaseReturnCost;
+    const profit = revenue - refundAmount - cost;
+
+    // Payment methods breakdown - with proper mixed payment distribution
+    const paymentMethodBreakdown: Record<string, { revenue: number; count: number; refunds: number; refundAmount: number }> = {
+      cash: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      credit_card: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      debit_card: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      upi: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+    };
+
+    // Process regular (non-mixed) orders
+    const regularOrders = todaysOrders.filter(order => order.paymentMethod !== 'mixed');
+    regularOrders.forEach(order => {
+      const method = order.paymentMethod || 'cash';
+      const amount = Math.floor(parseFloat(order.totalAmount.toString()));
+      paymentMethodBreakdown[method].revenue += amount;
+      paymentMethodBreakdown[method].count += 1;
+    });
+
+    // Process mixed payment orders
+    const mixedOrders = todaysOrders.filter(order => order.paymentMethod === 'mixed');
+    for (const order of mixedOrders) {
+      const payments = await db.select().from(paymentDetails).where(eq(paymentDetails.orderId, order.id));
+      payments.forEach(payment => {
+        const method = payment.paymentMethod;
+        const amount = Math.floor(parseFloat(payment.amount.toString()));
+        paymentMethodBreakdown[method].revenue += amount;
+        paymentMethodBreakdown[method].count += 1;
+      });
+    }
+
+
+
+    todaysReturns.forEach(ret => {
+      const method = ret.paymentMethod || 'cash';
+      if (ret.refundAmount) {
+        const amount = Math.floor(parseFloat(ret.refundAmount.toString()));
+        paymentMethodBreakdown[method].refunds += 1;
+        paymentMethodBreakdown[method].refundAmount += amount;
+      }
+    });
+
+    return {
+      revenue,
+      refundAmount,
+      cost,
+      profit,
+      orderCount: todaysOrders.length,
+      returnCount: todaysReturns.length,
+      paymentMethodBreakdown
+    };
   }
 
   // Returns
@@ -417,9 +637,9 @@ export class DatabaseStorage implements IStorage {
     for (const item of items) {
       const itemId = randomUUID();
       await db.insert(returnItems).values({
-        id: itemId,
-        returnId,
         ...item,
+        id: itemId,
+        returnId: returnId,
       });
 
       const returnItemResult = await db.select().from(returnItems).where(eq(returnItems.id, itemId));
@@ -427,19 +647,13 @@ export class DatabaseStorage implements IStorage {
 
       const product = await this.getProduct(item.productId);
       if (product) {
-        await this.updateProduct(item.productId, {
-          ...product,
-          stockQuantity: product.stockQuantity + item.quantity,
-          isFeatured: product.isFeatured ?? false,
-        });
+        const newStockQuantity = product.stockQuantity + item.quantity;
+        await db.update(products)
+          .set({ stockQuantity: newStockQuantity })
+          .where(eq(products.id, item.productId));
 
-        const stats = await this.getStockStatsByProduct(item.productId);
-        if (stats) {
-          await this.updateStockStats(item.productId, {
-            available: product.stockQuantity + item.quantity,
-            returned: stats.returned + item.quantity,
-          });
-        }
+        // Stock movements are now tracked only in the stock_movements table
+        // Stock stats will be calculated on demand from stock movements
       }
 
       await this.createStockMovement({
@@ -466,11 +680,39 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Discount codes
-  async getDiscountCodes(customerEmail?: string): Promise<DiscountCode[]> {
-    if (customerEmail) {
-      return await db.select().from(discountCodes).where(eq(discountCodes.customerEmail, customerEmail));
-    }
+  async getDiscountCodesByEmail(customerEmail: string): Promise<DiscountCode[]> {
+    return await db.select().from(discountCodes).where(eq(discountCodes.customerEmail, customerEmail));
+  }
+  
+  async getDiscountCodesByName(customerName: string): Promise<DiscountCode[]> {
+    return await db.select().from(discountCodes).where(eq(discountCodes.customerName, customerName));
+  }
+  
+  async getAllDiscountCodes(): Promise<DiscountCode[]> {
     return await db.select().from(discountCodes);
+  }
+  
+  // Enhanced method that tries both email and name matching
+  async getDiscountCodes(customerIdentifier: string): Promise<DiscountCode[]> {
+    // First try exact email match
+    const emailMatches = await this.getDiscountCodesByEmail(customerIdentifier);
+    if (emailMatches.length > 0) {
+      return emailMatches;
+    }
+    
+    // If no email matches, try name match
+    const nameMatches = await this.getDiscountCodesByName(customerIdentifier);
+    if (nameMatches.length > 0) {
+      return nameMatches;
+    }
+    
+    // If still no matches, try to find by email in orders table
+    const ordersResult = await db.select().from(orders).where(eq(orders.customerEmail, customerIdentifier)).limit(1);
+    if (ordersResult.length > 0) {
+      return await this.getDiscountCodesByName(ordersResult[0].customerName);
+    }
+    
+    return [];
   }
 
   async getDiscountCode(code: string): Promise<DiscountCode | null> {
@@ -486,16 +728,23 @@ export class DatabaseStorage implements IStorage {
       id,
       code: data.code,
       customerEmail: data.customerEmail,
+      customerName: data.customerName,
+      customerPhone: data.customerPhone,
       amount,
+      amountType: typeof amount,
       expiresAt: data.expiresAt
     });
 
     await db.insert(discountCodes).values({
-      ...data,
       id,
+      code: data.code,
+      customerEmail: data.customerEmail!,
+      customerName: data.customerName || '',
+      customerPhone: data.customerPhone || '',
       amount,
       isUsed: false,
       usedAt: null,
+      expiresAt: data.expiresAt || null,
     });
 
     const discountCodeResult = await db.select().from(discountCodes).where(eq(discountCodes.id, id));
@@ -567,76 +816,43 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  // Stock Stats
-  async getStockStats(): Promise<StockStats[]> {
-    const allProducts = await db.select().from(products);
-
-    for (const product of allProducts) {
-      const existing = await db
-        .select()
-        .from(stockStats)
-        .where(eq(stockStats.productId, product.id))
-        .limit(1);
-
-      if (existing.length === 0) {
-        await db.insert(stockStats).values({
-          id: nanoid(),
-          productId: product.id,
-          productName: product.productName,
-          sku: product.sku,
-          category: product.category,
-          available: product.stockQuantity,
-          sold: 0,
-          returned: 0,
-          purchased: 0,
-          initialStock: product.stockQuantity,
-        });
-      } else {
-        await db
-          .update(stockStats)
-          .set({
-            available: product.stockQuantity,
-            updatedAt: new Date()
-          })
-          .where(eq(stockStats.productId, product.id));
-      }
-    }
-
-    const stats = await db.select().from(stockStats);
-    return stats;
+  // Payment Details
+  async getPaymentDetails(orderId: string): Promise<PaymentDetail[]> {
+    return await db.select().from(paymentDetails).where(eq(paymentDetails.orderId, orderId));
   }
 
-  async getStockStatsByProduct(productId: string): Promise<StockStats | null> {
-    const result = await db.select().from(stockStats).where(eq(stockStats.productId, productId));
-    return result[0] || null;
-  }
-
-  async updateStockStats(productId: string, updates: Partial<StockStats>): Promise<StockStats | null> {
-    await db.update(stockStats)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(stockStats.productId, productId));
-
-    const result = await db.select().from(stockStats).where(eq(stockStats.productId, productId));
-    return result[0] || null;
-  }
-
-  async initializeStockStats(product: Product): Promise<StockStats> {
+  async createPaymentDetail(payment: InsertPaymentDetail): Promise<PaymentDetail> {
     const id = randomUUID();
-    await db.insert(stockStats).values({
+    await db.insert(paymentDetails).values({
+      ...payment,
       id,
-      productId: product.id,
-      productName: product.productName,
-      sku: product.sku,
-      category: product.category,
-      available: product.stockQuantity,
-      sold: 0,
-      returned: 0,
-      purchased: 0,
-      initialStock: product.stockQuantity,
     });
 
-    const statsResult = await db.select().from(stockStats).where(eq(stockStats.id, id));
-    return statsResult[0];
+    const paymentResult = await db.select().from(paymentDetails).where(eq(paymentDetails.id, id));
+    return paymentResult[0];
+  }
+
+  async updatePaymentDetail(id: string, payment: Partial<InsertPaymentDetail>): Promise<PaymentDetail | null> {
+    await db.update(paymentDetails)
+      .set(payment)
+      .where(eq(paymentDetails.id, id));
+
+    const result = await db.select().from(paymentDetails).where(eq(paymentDetails.id, id));
+    return result[0] || null;
+  }
+
+  async deletePaymentDetail(id: string): Promise<boolean> {
+    await db.delete(paymentDetails).where(eq(paymentDetails.id, id));
+    return true;
+  }
+
+  async getPaymentsByOrder(orderId: string): Promise<PaymentDetail[]> {
+    return await db.select().from(paymentDetails).where(eq(paymentDetails.orderId, orderId));
+  }
+
+  async getTotalPaidForOrder(orderId: string): Promise<number> {
+    const payments = await this.getPaymentsByOrder(orderId);
+    return payments.reduce((sum, payment) => sum + Math.floor(parseFloat(payment.amount)), 0);
   }
 }
 

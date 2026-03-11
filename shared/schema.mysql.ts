@@ -70,8 +70,11 @@ export const orders = mysqlTable("orders", {
   status: varchar("status", { length: 50 }).default("pending").notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
   notes: text("notes"),
-  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
-  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  subTotal: decimal("sub_total", { precision: 10, scale: 2 }),
+  discountPercentage: decimal("discount_percentage", { precision: 5, scale: 2 }),
+  discountAmount: int("discount_amount"),
+  totalAmount: int("total_amount").notNull(),
+  date: timestamp("date").default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const insertOrderSchema = createInsertSchema(orders, {
@@ -79,8 +82,34 @@ export const insertOrderSchema = createInsertSchema(orders, {
   customerEmail: z.string().email().optional().or(z.literal("")),
   status: z.enum(["pending", "processing", "shipped", "delivered", "cancelled"]),
   paymentMethod: z.enum(["cash", "credit_card", "debit_card", "upi", "bank_transfer", "store_credit", "mixed"]),
-  totalAmount: z.string().min(1, "Total amount is required"),
-}).omit({ id: true, createdAt: true, orderNumber: true });
+  subTotal: z.string().optional().transform(val => val === "" ? null : val).nullable(),
+  discountPercentage: z.string().optional().transform(val => {
+    if (val === "" || val === null || val === undefined) return null;
+    const num = parseFloat(val);
+    if (isNaN(num) || num < 0 || num > 100) {
+      throw new Error("Discount percentage must be a number between 0 and 100");
+    }
+    // Allow decimal percentages (no rounding/truncation)
+    return num.toString();
+  }).nullable(),
+  discountAmount: z.string().optional().transform(val => {
+    if (val === "" || val === null || val === undefined) return null;
+    const num = parseFloat(val);
+    if (isNaN(num) || num < 0) {
+      throw new Error("Discount amount must be a positive number");
+    }
+    // Convert to integer (truncate decimal portion)
+    return Math.floor(num).toString();
+  }).nullable(),
+  totalAmount: z.string().min(1, "Total amount is required").transform(val => {
+    const num = parseFloat(val);
+    if (isNaN(num) || num < 0) {
+      throw new Error("Total amount must be a positive number");
+    }
+    // Convert to integer (truncate decimal portion)
+    return Math.floor(num).toString();
+  }),
+}).omit({ id: true, date: true, orderNumber: true });
 
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type Order = typeof orders.$inferSelect;
@@ -102,15 +131,17 @@ export const insertOrderItemSchema = createInsertSchema(orderItems, {
   productId: z.string().min(1, "Product ID is required"),
   productName: z.string().min(1, "Product name is required"),
   sku: z.string().min(1, "SKU is required"),
-  quantity: z.number().int().min(1, "Quantity must be 1 or greater"),
+  quantity: z.number().int().min(1, "Quantity must be at least 1"),
   unitPrice: z.string().min(1, "Unit price is required"),
-}).omit({ id: true });
+  subtotal: z.string().min(1, "Subtotal is required"),
+}).omit({ id: true, orderId: true });
 
 export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
 export type OrderItem = typeof orderItems.$inferSelect;
 
 export type OrderWithItems = Order & {
   items: OrderItem[];
+  payments?: PaymentDetail[];
 };
 
 /* ---------------------- STOCK MOVEMENTS ---------------------- */
@@ -138,30 +169,6 @@ export const insertStockMovementSchema = createInsertSchema(stockMovements, {
 export type InsertStockMovement = z.infer<typeof insertStockMovementSchema>;
 export type StockMovement = typeof stockMovements.$inferSelect;
 
-/* ---------------------- STOCK STATS ---------------------- */
-export const stockStats = mysqlTable("stock_stats", {
-  id: varchar("id", { length: 36 }).primaryKey(),
-  productId: varchar("product_id", { length: 36 }).notNull(),
-  productName: varchar("product_name", { length: 255 }).notNull(),
-  sku: varchar("sku", { length: 100 }).notNull(),
-  category: varchar("category", { length: 100 }).notNull(),
-  available: int("available").default(0).notNull(),
-  sold: int("sold").default(0).notNull(),
-  returned: int("returned").default(0).notNull(),
-  purchased: int("purchased").default(0).notNull(),
-  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
-});
-
-export const insertStockStatsSchema = createInsertSchema(stockStats, {
-  productId: z.string().min(1, "Product ID is required"),
-  productName: z.string().min(1, "Product name is required"),
-  sku: z.string().min(1, "SKU is required"),
-  category: z.string().min(1, "Category is required"),
-}).omit({ id: true, updatedAt: true });
-
-export type InsertStockStats = z.infer<typeof insertStockStatsSchema>;
-export type StockStats = typeof stockStats.$inferSelect;
-
 /* ---------------------- RETURNS ---------------------- */
 export const returns = mysqlTable("returns", {
   id: varchar("id", { length: 36 }).primaryKey(),
@@ -170,9 +177,10 @@ export const returns = mysqlTable("returns", {
   orderNumber: varchar("order_number", { length: 50 }).notNull(),
   customerName: varchar("customer_name", { length: 100 }).notNull(),
   customerEmail: varchar("customer_email", { length: 150 }),
+  customerPhone: varchar("customer_phone", { length: 20 }),
   status: varchar("status", { length: 50 }).default("pending").notNull(),
-  reason: varchar("reason", { length: 255 }).notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }).default("cash").notNull(),
+  reason: varchar("reason", { length: 255 }).notNull(),
   notes: text("notes"),
   refundAmount: decimal("refund_amount", { precision: 10, scale: 2 }),
   creditAmount: decimal("credit_amount", { precision: 10, scale: 2 }),
@@ -184,6 +192,7 @@ export const returns = mysqlTable("returns", {
 export const insertReturnSchema = createInsertSchema(returns, {
   customerName: z.string().min(1, "Customer name is required"),
   customerEmail: z.string().email().optional().or(z.literal("")),
+  customerPhone: z.string().optional(),
   status: z.enum(["pending", "approved", "rejected", "completed"]),
   reason: z.string().min(1, "Return reason is required"),
   paymentMethod: z.enum(["cash", "credit_card", "debit_card", "upi", "bank_transfer", "store_credit", "mixed"]),
@@ -229,11 +238,45 @@ export type ReturnWithItems = Return & {
   items: ReturnItem[];
 };
 
+/* ---------------------- PAYMENT DETAILS ---------------------- */
+export const paymentDetails = mysqlTable("payment_details", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  orderId: varchar("order_id", { length: 36 }).notNull(),
+  paymentMethod: varchar("payment_method", { length: 50 }).notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  paymentDate: timestamp("payment_date").default(sql`CURRENT_TIMESTAMP`),
+  transactionId: varchar("transaction_id", { length: 255 }),
+  status: varchar("status", { length: 50 }).default("completed").notNull(),
+  notes: text("notes"),
+});
+
+export const insertPaymentDetailSchema = createInsertSchema(paymentDetails, {
+  orderId: z.string().min(1, "Order ID is required"),
+  paymentMethod: z.enum(["cash", "credit_card", "debit_card", "upi", "bank_transfer", "store_credit"]),
+  amount: z.string().min(1, "Amount is required"),
+  status: z.enum(["pending", "completed", "failed", "refunded"]),
+  transactionId: z.string().optional(),
+  notes: z.string().optional(),
+}).omit({ 
+  id: true, 
+  paymentDate: true 
+});
+
+export type InsertPaymentDetail = z.infer<typeof insertPaymentDetailSchema>;
+export type PaymentDetail = typeof paymentDetails.$inferSelect;
+
+export type OrderWithPayments = Order & {
+  items: OrderItem[];
+  payments: PaymentDetail[];
+};
+
 /* ---------------------- DISCOUNT CODES ---------------------- */
 export const discountCodes = mysqlTable("discount_codes", {
   id: varchar("id", { length: 36 }).primaryKey(),
   code: varchar("code", { length: 50 }).notNull(),
   customerEmail: varchar("customer_email", { length: 150 }).notNull(),
+  customerName: varchar("customer_name", { length: 100 }),
+  customerPhone: varchar("customer_phone", { length: 20 }),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   isUsed: boolean("is_used").default(false),
   usedAt: timestamp("used_at"),
@@ -243,8 +286,16 @@ export const discountCodes = mysqlTable("discount_codes", {
 
 export const insertDiscountCodeSchema = createInsertSchema(discountCodes, {
   code: z.string().min(1, "Code is required"),
-  customerEmail: z.string().email("Valid email is required"),
-  amount: z.string().min(1, "Amount is required"),
+  customerName: z.string().min(1, "Customer name is required"),
+  customerEmail: z.string().email("Valid email is required").optional().or(z.literal("")),
+  customerPhone: z.string().optional(),
+  amount: z.string().min(1, "Amount is required").transform(val => {
+    const num = parseFloat(val);
+    if (isNaN(num) || num < 0) {
+      throw new Error("Discount amount must be a positive number");
+    }
+    return val;
+  }),
   expiresAt: z.date().optional(),
 }).omit({ id: true, createdAt: true, isUsed: true, usedAt: true });
 
@@ -282,6 +333,16 @@ export const accounts = mysqlTable("accounts", {
   transactionDate: timestamp("transaction_date").default(sql`CURRENT_TIMESTAMP`),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
+
+
+
+
+
+
+
+
+
+
 
 export const insertAccountSchema = createInsertSchema(accounts, {
   transactionType: z.enum(["sale", "purchase", "return", "refund", "adjustment", "direct_income"]),

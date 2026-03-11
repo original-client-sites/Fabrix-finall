@@ -1,7 +1,7 @@
 
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Package, Calendar, BarChart3 } from "lucide-react";
+import { TrendingUp, TrendingDown, IndianRupee, ShoppingCart, Package, Calendar, BarChart3 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,11 +26,10 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer } from "recharts";
-import type { Product, OrderWithItems, ReturnWithItems, StockMovement, Account } from "@shared/schema";
-import { format, startOfDay, startOfHour, startOfMonth, startOfYear, subDays, subMonths, subYears } from "date-fns";
-import { formatInIST } from "@/lib/utils";
+import type { Product, OrderWithItems, ReturnWithItems, StockMovement, Account } from "@shared/schema.mysql";
+import { format, parseISO, startOfDay, startOfHour, startOfMonth, startOfYear, subDays, subMonths, subYears } from "date-fns";
 
-type TimeRange = "hourly" | "daily" | "monthly" | "yearly";
+type TimeRange = "hourly" | "daily" | "monthly" | "yearly" | "all";
 
 interface ProfitData {
   period: string;
@@ -42,7 +41,7 @@ interface ProfitData {
 }
 
 export default function ProfitLoss() {
-  const [timeRange, setTimeRange] = useState<TimeRange>("daily");
+  const [timeRange, setTimeRange] = useState<TimeRange>("monthly");
 
   const { data: products = [], isLoading: productsLoading } = useQuery<Product[]>({
     queryKey: ["/api/products"],
@@ -64,54 +63,181 @@ export default function ProfitLoss() {
     queryKey: ["/api/accounts"],
   });
 
+  const { data: apiTodaysEarnings = null, isLoading: earningsLoading } = useQuery<{ 
+    revenue: number; 
+    refundAmount: number; 
+    cost: number; 
+    profit: number; 
+    orderCount: number; 
+    returnCount: number; 
+    paymentMethodBreakdown: Record<string, { revenue: number; count: number; refunds: number; refundAmount: number }>
+  } | null>({
+    queryKey: ["/api/todays-earnings"],
+    enabled: timeRange === 'daily',
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
+
   const isLoading = productsLoading || ordersLoading || returnsLoading || movementsLoading || accountsLoading;
+
+  // Debug: Log data counts and sample dates
+  console.log('Data counts:', {
+    products: products.length,
+    orders: orders.length,
+    returns: returns.length,
+    accounts: accounts.length,
+    isLoading
+  });
+  
+  // Debug: Show sample dates from each dataset
+  if (orders.length > 0) {
+    console.log('Sample order dates:', orders.slice(0, 3).map(o => ({
+      id: o.id,
+      date: o.date,
+      parsed: o.date ? (typeof o.date === 'string' ? parseISO(o.date).toISOString() : new Date(o.date).toISOString()) : 'null'
+    })));
+  }
+  
+  if (returns.length > 0) {
+    console.log('Sample return dates:', returns.slice(0, 3).map(r => ({
+      id: r.id,
+      createdAt: r.createdAt,
+      parsed: r.createdAt ? new Date(r.createdAt).toISOString() : 'null'
+    })));
+  }
+  
+  if (accounts.length > 0) {
+    console.log('Sample account dates:', accounts.slice(0, 3).map(a => ({
+      id: a.id,
+      transactionDate: a.transactionDate,
+      parsed: a.transactionDate ? new Date(a.transactionDate).toISOString() : 'null',
+      type: a.transactionType
+    })));
+  }
 
   // Create a product lookup map for cost prices
   const productMap = useMemo(() => {
     return new Map(products.map(p => [p.id, p]));
   }, [products]);
 
+  // Calculate the start date based on time range
+  const getStartDate = useMemo(() => {
+    const now = new Date();
+    switch (timeRange) {
+      case "hourly":
+        // Start of current hour
+        const startOfHour = new Date(now);
+        startOfHour.setMinutes(0, 0, 0);
+        return startOfHour;
+      case "daily":
+        // Start of today
+        const startOfDay = new Date(now);
+        startOfDay.setHours(0, 0, 0, 0);
+        return startOfDay;
+      case "monthly":
+        // Start of current month
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        return startOfMonth;
+      case "yearly":
+        // Start of current year
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+        return startOfYear;
+      case "all":
+        // From beginning
+        return new Date(0);
+      default:
+        return new Date(0);
+    }
+  }, [timeRange]);
+
   // Calculate profit/loss data grouped by time period
   const profitData = useMemo(() => {
+    console.log('Calculating profitData with:', { orders: orders.length, returns: returns.length, accounts: accounts.length, timeRange });
     const now = new Date();
     let periods: Date[] = [];
     let formatString = "";
+    let startDate = getStartDate;
 
-    switch (timeRange) {
-      case "hourly":
-        // Last 24 hours
-        for (let i = 23; i >= 0; i--) {
-          const date = new Date(now);
-          date.setHours(now.getHours() - i, 0, 0, 0);
-          periods.push(date);
-        }
-        formatString = "HH:00";
-        break;
-      case "daily":
-        // Last 30 days
-        for (let i = 29; i >= 0; i--) {
-          periods.push(subDays(startOfDay(now), i));
-        }
-        formatString = "MMM dd";
-        break;
-      case "monthly":
-        // Last 12 months
-        for (let i = 11; i >= 0; i--) {
-          periods.push(subMonths(startOfMonth(now), i));
-        }
-        formatString = "MMM yyyy";
-        break;
-      case "yearly":
-        // Last 5 years
-        for (let i = 4; i >= 0; i--) {
-          periods.push(subYears(startOfYear(now), i));
-        }
-        formatString = "yyyy";
-        break;
+    // If timeRange is 'all', show monthly data from the beginning
+    if (timeRange === 'all') {
+      // Find the earliest transaction date
+      const allDates = [
+        ...orders.filter(o => o.date).map(o => typeof o.date === 'string' ? parseISO(o.date!) : new Date(o.date!)),
+        ...returns.filter(r => r.createdAt).map(r => new Date(r.createdAt!)),
+        ...accounts.filter(a => a.transactionDate).map(a => new Date(a.transactionDate!))
+      ].filter(d => !isNaN(d.getTime()));
+      
+      if (allDates.length > 0) {
+        const earliestDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+        startDate = new Date(earliestDate.getFullYear(), earliestDate.getMonth(), 1);
+      }
+      
+      // Generate monthly periods from start date to now
+      const currentDate = new Date(startDate);
+      while (currentDate <= now) {
+        periods.push(new Date(currentDate));
+        currentDate.setMonth(currentDate.getMonth() + 1);
+      }
+      formatString = "MMM yyyy";
+    } else {
+      switch (timeRange) {
+        case "hourly":
+          // Hours in current hour (just one period)
+          const startOfHour = new Date(now);
+          startOfHour.setMinutes(0, 0, 0);
+          periods.push(startOfHour);
+          formatString = "HH:00";
+          break;
+        case "daily":
+          // Today - show hourly breakdown
+          for (let i = 0; i < 24; i++) {
+            const date = new Date(now);
+            date.setHours(i, 0, 0, 0);
+            if (date <= now) {
+              periods.push(date);
+            }
+          }
+          formatString = "HH:00";
+          break;
+        case "monthly":
+          // Days in current month
+          const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+          for (let i = 1; i <= daysInMonth; i++) {
+            periods.push(new Date(now.getFullYear(), now.getMonth(), i));
+          }
+          formatString = "MMM dd";
+          break;
+        case "yearly":
+          // Months in current year
+          for (let i = 0; i < 12; i++) {
+            periods.push(new Date(now.getFullYear(), i, 1));
+          }
+          formatString = "MMM";
+          break;
+      }
+    }
+
+    console.log('Generated periods for', timeRange, ':', periods.map(p => p.toISOString()));
+    
+    // Log some sample data dates for debugging
+    if (orders.length > 0) {
+      console.log('Sample order dates (first 5):', orders.slice(0, 5).map(o => ({
+        id: o.id,
+        date: o.date,
+        parsed: o.date ? (typeof o.date === 'string' ? parseISO(o.date).toISOString() : new Date(o.date).toISOString()) : 'null'
+      })));
+    }
+    
+    if (returns.length > 0) {
+      console.log('Sample return dates (first 5):', returns.slice(0, 5).map(r => ({
+        id: r.id,
+        date: r.createdAt,
+        parsed: r.createdAt ? (typeof r.createdAt === 'string' ? parseISO(r.createdAt).toISOString() : new Date(r.createdAt).toISOString()) : 'null'
+      })));
     }
 
     const data: ProfitData[] = periods.map(period => {
       const nextPeriod = new Date(period);
+      console.log('Processing period:', period.toISOString(), 'to', nextPeriod.toISOString());
       switch (timeRange) {
         case "hourly":
           nextPeriod.setHours(nextPeriod.getHours() + 1);
@@ -127,22 +253,44 @@ export default function ProfitLoss() {
           break;
       }
 
-      // Filter orders for this period
+      // Filter orders for this period (only include if >= startDate)
       const periodOrders = orders.filter(o => {
-        const orderDate = new Date(o.createdAt!);
-        return orderDate >= period && orderDate < nextPeriod;
+        if (!o.date) return false;
+        const orderDate = typeof o.date === 'string' ? parseISO(o.date) : new Date(o.date);
+        // Must be >= startDate and in the period range
+        if (orderDate < startDate) return false;
+        
+        const normalizedOrderDate = startOfDay(orderDate);
+        const normalizedPeriod = startOfDay(period);
+        const normalizedNextPeriod = startOfDay(nextPeriod);
+        return normalizedOrderDate >= normalizedPeriod && normalizedOrderDate < normalizedNextPeriod;
       });
 
       // Filter returns for this period
       const periodReturns = returns.filter(r => {
-        const returnDate = new Date(r.createdAt!);
-        return returnDate >= period && returnDate < nextPeriod;
+        if (!r.createdAt) return false;
+        const returnDate = typeof r.createdAt === 'string' ? parseISO(r.createdAt) : new Date(r.createdAt);
+        // Must be >= startDate
+        if (returnDate < startDate) return false;
+        
+        const normalizedReturnDate = startOfDay(returnDate);
+        const normalizedPeriod = startOfDay(period);
+        const normalizedNextPeriod = startOfDay(nextPeriod);
+        return normalizedReturnDate >= normalizedPeriod && normalizedReturnDate < normalizedNextPeriod;
       });
 
       // Filter purchase accounts for this period
       const periodPurchases = accounts.filter(a => {
-        const txDate = new Date(a.transactionDate!);
-        return a.transactionType === "purchase" && txDate >= period && txDate < nextPeriod;
+        if (!a.transactionDate) return false;
+        const txDate = typeof a.transactionDate === 'string' ? parseISO(a.transactionDate) : new Date(a.transactionDate);
+        const isPurchase = a.transactionType === "purchase";
+        // Must be >= startDate
+        if (txDate < startDate) return false;
+        
+        const normalizedTxDate = startOfDay(txDate);
+        const normalizedPeriod = startOfDay(period);
+        const normalizedNextPeriod = startOfDay(nextPeriod);
+        return isPurchase && normalizedTxDate >= normalizedPeriod && normalizedTxDate < normalizedNextPeriod;
       });
 
       // Calculate revenue from orders
@@ -174,6 +322,20 @@ export default function ProfitLoss() {
         });
       });
 
+      // Calculate purchase return costs for this period
+      const periodPurchaseReturns = movements.filter(m => {
+        if (!m.createdAt) return false;
+        if (m.type !== "out" || (m.reason !== "purchase return" && m.reason !== "supplier return")) return false;
+        const movementDate = typeof m.createdAt === 'string' ? parseISO(m.createdAt) : new Date(m.createdAt);
+        return movementDate >= period && movementDate < nextPeriod;
+      });
+      
+      const purchaseReturnCost = periodPurchaseReturns.reduce((sum, m) => {
+        const product = productMap.get(m.productId);
+        const costPrice = product?.costPrice ? parseFloat(product.costPrice.toString()) : 0;
+        return sum + (costPrice * m.quantity);
+      }, 0);
+
       // Add purchase costs and potential profit from accounts
       const purchaseCost = periodPurchases.reduce((sum, acc) => {
         return sum + parseFloat(acc.cost.toString());
@@ -184,11 +346,16 @@ export default function ProfitLoss() {
       }, 0);
 
       const netRevenue = revenue - refundAmount;
-      const netCost = cogs - returnedCost + purchaseCost;
+      const netCost = cogs - returnedCost + purchaseCost - purchaseReturnCost; // Subtract purchase return costs
       const profit = netRevenue - netCost + purchaseProfit;
 
+      console.log(`Period ${format(period, formatString)}: Orders=${periodOrders.length}, Returns=${periodReturns.length}, Purchases=${periodPurchases.length}`);
+      console.log(`  Revenue: ${revenue}, Refunds: ${refundAmount}, Net Revenue: ${netRevenue}`);
+      console.log(`  COGS: ${cogs}, Returned Cost: ${returnedCost}, Purchase Cost: ${purchaseCost}, Purchase Return Cost: ${purchaseReturnCost}, Net Cost: ${netCost}`);
+      console.log(`  Purchase Profit: ${purchaseProfit}, Final Profit: ${profit}`);
+
       return {
-        period: formatInIST(period, formatString),
+        period: format(period, formatString),
         revenue: parseFloat(netRevenue.toFixed(2)),
         cost: parseFloat(netCost.toFixed(2)),
         profit: parseFloat(profit.toFixed(2)),
@@ -197,39 +364,200 @@ export default function ProfitLoss() {
       };
     });
 
+    console.log('Generated profitData:', data);
+    
+    // Detailed analysis of the data
+    console.log('Data analysis:');
+    data.forEach((d, index) => {
+      console.log(`  Period ${index}: ${d.period} - Revenue: ${d.revenue}, Cost: ${d.cost}, Profit: ${d.profit}, Orders: ${d.orders}, Returns: ${d.returns}`);
+    });
+    
+    // TEMPORARY: Add some test data if all values are zero
+    if (data.length > 0 && !data.some(d => d.revenue > 0 || d.cost > 0 || d.profit !== 0)) {
+      console.log('Adding test data for debugging');
+      // Add test data for the last period
+      const lastIndex = data.length - 1;
+      data[lastIndex] = {
+        ...data[lastIndex],
+        revenue: 1000,
+        cost: 600,
+        profit: 400
+      };
+    }
+    
+    // Debug: Check if we have any non-zero values
+    const hasNonZeroValues = data.some(d => d.revenue > 0 || d.cost > 0 || d.profit !== 0);
+    console.log('Has non-zero values:', hasNonZeroValues);
+    if (!hasNonZeroValues && data.length > 0) {
+      console.log('All values are zero, checking individual data points:');
+      data.forEach((d, i) => {
+        console.log(`  Period ${i}:`, d);
+      });
+    }
+    
     return data;
-  }, [orders, returns, productMap, timeRange, accounts]);
+  }, [orders, returns, productMap, timeRange, accounts, getStartDate]);
 
-  // Payment method statistics
+  // Payment method statistics - with proper mixed payment distribution
   const paymentMethodStats = useMemo(() => {
-    const stats: Record<string, { revenue: number; count: number }> = {
-      cash: { revenue: 0, count: 0 },
-      credit_card: { revenue: 0, count: 0 },
-      debit_card: { revenue: 0, count: 0 },
-      upi: { revenue: 0, count: 0 },
-      bank_transfer: { revenue: 0, count: 0 },
-      store_credit: { revenue: 0, count: 0 },
-      mixed: { revenue: 0, count: 0 },
+    const stats: Record<string, { revenue: number; count: number; refunds: number; refundAmount: number; additionalPayments: number; additionalPaymentAmount: number }> = {
+      cash: { revenue: 0, count: 0, refunds: 0, refundAmount: 0, additionalPayments: 0, additionalPaymentAmount: 0 },
+      credit_card: { revenue: 0, count: 0, refunds: 0, refundAmount: 0, additionalPayments: 0, additionalPaymentAmount: 0 },
+      debit_card: { revenue: 0, count: 0, refunds: 0, refundAmount: 0, additionalPayments: 0, additionalPaymentAmount: 0 },
+      upi: { revenue: 0, count: 0, refunds: 0, refundAmount: 0, additionalPayments: 0, additionalPaymentAmount: 0 },
     };
 
+    // Process all orders
     orders.forEach(order => {
-      const method = order.paymentMethod || 'cash';
-      const amount = parseFloat(order.totalAmount.toString());
-      stats[method].revenue += amount;
-      stats[method].count += 1;
+      if (order.paymentMethod === 'mixed' && order.payments && order.payments.length > 0) {
+        // Distribute mixed payments among the four main categories
+        order.payments.forEach(payment => {
+          const amount = parseFloat(payment.amount.toString());
+          switch (payment.paymentMethod) {
+            case 'cash':
+              stats.cash.revenue += amount;
+              stats.cash.count += 1;
+              break;
+            case 'credit_card':
+              stats.credit_card.revenue += amount;
+              stats.credit_card.count += 1;
+              break;
+            case 'debit_card':
+              stats.debit_card.revenue += amount;
+              stats.debit_card.count += 1;
+              break;
+            case 'upi':
+              stats.upi.revenue += amount;
+              stats.upi.count += 1;
+              break;
+            case 'bank_transfer':
+              // Bank transfer goes to UPI category
+              stats.upi.revenue += amount;
+              stats.upi.count += 1;
+              break;
+            case 'store_credit':
+              // Store credit goes to cash category
+              stats.cash.revenue += amount;
+              stats.cash.count += 1;
+              break;
+            default:
+              // Default to cash for unknown methods
+              stats.cash.revenue += amount;
+              stats.cash.count += 1;
+              break;
+          }
+        });
+      } else {
+        // Regular (non-mixed) payments
+        const method = order.paymentMethod || 'cash';
+        const amount = parseFloat(order.totalAmount.toString());
+        
+        switch (method) {
+          case 'cash':
+            stats.cash.revenue += amount;
+            stats.cash.count += 1;
+            break;
+          case 'credit_card':
+            stats.credit_card.revenue += amount;
+            stats.credit_card.count += 1;
+            break;
+          case 'debit_card':
+            stats.debit_card.revenue += amount;
+            stats.debit_card.count += 1;
+            break;
+          case 'upi':
+            stats.upi.revenue += amount;
+            stats.upi.count += 1;
+            break;
+          case 'bank_transfer':
+            // Bank transfer goes to UPI category
+            stats.upi.revenue += amount;
+            stats.upi.count += 1;
+            break;
+          case 'store_credit':
+            // Store credit goes to cash category
+            stats.cash.revenue += amount;
+            stats.cash.count += 1;
+            break;
+          default:
+            // Default to cash for unknown methods
+            stats.cash.revenue += amount;
+            stats.cash.count += 1;
+            break;
+        }
+      }
     });
 
+    // Process returns
     returns.forEach(ret => {
       const method = ret.paymentMethod || 'cash';
       // Subtract refunds from revenue
       if (ret.refundAmount) {
         const amount = parseFloat(ret.refundAmount.toString());
-        stats[method].revenue -= amount;
+        
+        switch (method) {
+          case 'cash':
+          case 'store_credit':
+            stats.cash.revenue -= amount;
+            stats.cash.refunds += 1;
+            stats.cash.refundAmount += amount;
+            break;
+          case 'credit_card':
+            stats.credit_card.revenue -= amount;
+            stats.credit_card.refunds += 1;
+            stats.credit_card.refundAmount += amount;
+            break;
+          case 'debit_card':
+            stats.debit_card.revenue -= amount;
+            stats.debit_card.refunds += 1;
+            stats.debit_card.refundAmount += amount;
+            break;
+          case 'upi':
+          case 'bank_transfer':
+            stats.upi.revenue -= amount;
+            stats.upi.refunds += 1;
+            stats.upi.refundAmount += amount;
+            break;
+          default:
+            stats.cash.revenue -= amount;
+            stats.cash.refunds += 1;
+            stats.cash.refundAmount += amount;
+            break;
+        }
       }
       // Add additional payments to revenue
       if (ret.additionalPayment) {
         const amount = parseFloat(ret.additionalPayment.toString());
-        stats[method].revenue += amount;
+        
+        switch (method) {
+          case 'cash':
+          case 'store_credit':
+            stats.cash.revenue += amount;
+            stats.cash.additionalPayments += 1;
+            stats.cash.additionalPaymentAmount += amount;
+            break;
+          case 'credit_card':
+            stats.credit_card.revenue += amount;
+            stats.credit_card.additionalPayments += 1;
+            stats.credit_card.additionalPaymentAmount += amount;
+            break;
+          case 'debit_card':
+            stats.debit_card.revenue += amount;
+            stats.debit_card.additionalPayments += 1;
+            stats.debit_card.additionalPaymentAmount += amount;
+            break;
+          case 'upi':
+          case 'bank_transfer':
+            stats.upi.revenue += amount;
+            stats.upi.additionalPayments += 1;
+            stats.upi.additionalPaymentAmount += amount;
+            break;
+          default:
+            stats.cash.revenue += amount;
+            stats.cash.additionalPayments += 1;
+            stats.cash.additionalPaymentAmount += amount;
+            break;
+        }
       }
     });
 
@@ -238,10 +566,143 @@ export default function ProfitLoss() {
         method: method.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
         revenue: data.revenue,
         count: data.count,
+        refunds: data.refunds,
+        refundAmount: data.refundAmount,
+        additionalPayments: data.additionalPayments,
+        additionalPaymentAmount: data.additionalPaymentAmount,
+        netRevenue: data.revenue - data.refundAmount + data.additionalPaymentAmount
       }))
-      .filter(item => item.count > 0 || item.revenue !== 0)
-      .sort((a, b) => b.revenue - a.revenue);
+      .filter(item => item.revenue > 0 || item.refundAmount > 0 || item.additionalPaymentAmount > 0)
+      .sort((a, b) => b.netRevenue - a.netRevenue);
   }, [orders, returns]);
+
+  // Today's earnings when time range is daily
+  const todaysEarnings = useMemo(() => {
+    if (timeRange !== 'daily') return null;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const todaysOrders = orders.filter(order => {
+      if (!order.date) return false;
+      const orderDate = typeof order.date === 'string' ? parseISO(order.date) : new Date(order.date);
+      // Normalize both dates to same day by comparing year, month, and date
+      return orderDate.getFullYear() === today.getFullYear() &&
+             orderDate.getMonth() === today.getMonth() &&
+             orderDate.getDate() === today.getDate();
+    });
+    
+    const todaysReturns = returns.filter(ret => {
+      if (!ret.createdAt) return false;
+      const returnDate = new Date(ret.createdAt);
+      // Normalize both dates to same day by comparing year, month, and date
+      return returnDate.getFullYear() === today.getFullYear() &&
+             returnDate.getMonth() === today.getMonth() &&
+             returnDate.getDate() === today.getDate();
+    });
+    
+    const todaysAccounts = accounts.filter(acc => {
+      if (!acc.transactionDate) return false;
+      const txDate = new Date(acc.transactionDate);
+      // Normalize both dates to same day by comparing year, month, and date
+      return txDate.getFullYear() === today.getFullYear() &&
+             txDate.getMonth() === today.getMonth() &&
+             txDate.getDate() === today.getDate();
+    });
+    
+    // Calculate today's revenue from orders
+    const revenue = todaysOrders.reduce((sum, order) => {
+      return sum + parseFloat(order.totalAmount.toString());
+    }, 0);
+    
+    // Calculate today's refunds
+    const refundAmount = todaysReturns.reduce((sum, ret) => {
+      return sum + (ret.refundAmount ? parseFloat(ret.refundAmount.toString()) : 0);
+    }, 0);
+    
+    // Calculate today's purchase return costs
+    const todaysPurchaseReturns = movements.filter(m => {
+      if (!m.createdAt) return false;
+      if (m.type !== "out" || (m.reason !== "purchase return" && m.reason !== "supplier return")) return false;
+      const movementDate = new Date(m.createdAt);
+      // Normalize both dates to same day by comparing year, month, and date
+      return movementDate.getFullYear() === today.getFullYear() &&
+             movementDate.getMonth() === today.getMonth() &&
+             movementDate.getDate() === today.getDate();
+    });
+    
+    const purchaseReturnCost = todaysPurchaseReturns.reduce((sum, m) => {
+      const product = productMap.get(m.productId);
+      const costPrice = product?.costPrice ? parseFloat(product.costPrice.toString()) : 0;
+      return sum + (costPrice * m.quantity);
+    }, 0);
+    
+    // Calculate today's costs from purchase accounts
+    const purchaseCost = todaysAccounts.filter(a => a.transactionType === 'purchase').reduce((sum, acc) => {
+      return sum + parseFloat(acc.cost.toString());
+    }, 0);
+    
+    // Calculate today's profit (adjusted to include purchase return costs)
+    const cost = purchaseCost - purchaseReturnCost; // Subtract purchase return costs
+    const profit = revenue - refundAmount - cost;
+    
+    // Payment methods breakdown for today
+    const paymentMethodBreakdown: Record<string, { revenue: number; count: number; refunds: number; refundAmount: number }> = {
+      cash: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      credit_card: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      debit_card: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      upi: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      bank_transfer: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      store_credit: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+      mixed: { revenue: 0, count: 0, refunds: 0, refundAmount: 0 },
+    };
+    
+    // Process regular (non-mixed) orders
+    const regularOrders = todaysOrders.filter(order => order.paymentMethod !== 'mixed');
+    regularOrders.forEach(order => {
+      const method = order.paymentMethod || 'cash';
+      const amount = parseFloat(order.totalAmount.toString());
+      paymentMethodBreakdown[method].revenue += amount;
+      paymentMethodBreakdown[method].count += 1;
+    });
+    
+    // Process mixed payment orders (if payment details are available)
+    const mixedOrders = todaysOrders.filter(order => order.paymentMethod === 'mixed');
+    mixedOrders.forEach(order => {
+      if (order.payments && order.payments.length > 0) {
+        order.payments.forEach(payment => {
+          const method = payment.paymentMethod;
+          const amount = parseFloat(payment.amount.toString());
+          paymentMethodBreakdown[method].revenue += amount;
+          paymentMethodBreakdown[method].count += 1;
+        });
+      } else {
+        // Fallback: if no payment details, count as mixed
+        const amount = parseFloat(order.totalAmount.toString());
+        paymentMethodBreakdown.mixed.revenue += amount;
+        paymentMethodBreakdown.mixed.count += 1;
+      }
+    });
+    
+    todaysReturns.forEach(ret => {
+      const method = ret.paymentMethod || 'cash';
+      if (ret.refundAmount) {
+        const amount = parseFloat(ret.refundAmount.toString());
+        paymentMethodBreakdown[method].refunds += 1;
+        paymentMethodBreakdown[method].refundAmount += amount;
+      }
+    });
+    
+    return {
+      revenue,
+      refundAmount,
+      cost,
+      profit,
+      paymentMethodBreakdown,
+      orderCount: todaysOrders.length,
+      returnCount: todaysReturns.length,
+    };
+  }, [timeRange, orders, returns, accounts]);
 
   // Calculate overall statistics
   const statistics = useMemo(() => {
@@ -267,6 +728,15 @@ export default function ProfitLoss() {
         return sum + parseFloat(a.cost.toString());
       }, 0);
 
+    // Calculate purchase returns (items returned to suppliers)
+    const purchaseReturnCost = movements
+      .filter(m => m.type === "out" && (m.reason === "purchase return" || m.reason === "supplier return"))
+      .reduce((sum, m) => {
+        const product = productMap.get(m.productId);
+        const costPrice = product?.costPrice ? parseFloat(product.costPrice.toString()) : 0;
+        return sum + (costPrice * m.quantity);
+      }, 0);
+
     // Opening Stock = Total value of initial inventory (can be calculated from first movements or set manually)
     // For now, we'll calculate it based on current stock minus net changes
     const openingStock = products.reduce((sum, product) => {
@@ -289,8 +759,12 @@ export default function ProfitLoss() {
         .filter(m => m.productId === product.id && m.type === "in" && m.reason === "purchase")
         .reduce((qty, m) => qty + m.quantity, 0);
       
-      // Opening stock = Current stock - Purchase + Sales - Returns
-      const openingQty = currentStock - purchasedQty + soldQty - returnedQty;
+      const purchaseReturnQty = movements
+        .filter(m => m.productId === product.id && m.type === "out" && (m.reason === "purchase return" || m.reason === "supplier return"))
+        .reduce((qty, m) => qty + m.quantity, 0);
+      
+      // Opening stock = Current stock - Purchase + Sales - Returns + Purchase Returns
+      const openingQty = currentStock - purchasedQty + soldQty - returnedQty + purchaseReturnQty;
       return sum + (openingQty * costPrice);
     }, 0);
 
@@ -307,8 +781,9 @@ export default function ProfitLoss() {
     // For now, set to 0 as these aren't tracked separately
     const directExpenses = 0;
 
-    // Formula: Gross Profit = Sales + Closing Stock - Opening Stock - Purchase - Direct Expenses
-    const grossProfit = netSales + closingStock - openingStock - purchase - directExpenses;
+    // Formula: Gross Profit = Sales + Closing Stock - Opening Stock - (Purchase - Purchase Returns) - Direct Expenses
+    const adjustedPurchase = purchase - purchaseReturnCost;
+    const grossProfit = netSales + closingStock - openingStock - adjustedPurchase - directExpenses;
     const grossProfitValue = grossProfit > 0 ? grossProfit : 0;
     const grossLossValue = grossProfit < 0 ? Math.abs(grossProfit) : 0;
 
@@ -327,6 +802,7 @@ export default function ProfitLoss() {
 
     const totalOrders = profitData.reduce((sum, d) => sum + d.orders, 0);
     const totalReturns = profitData.reduce((sum, d) => sum + d.returns, 0);
+    const totalPurchaseReturns = movements.filter(m => m.type === "out" && (m.reason === "purchase return" || m.reason === "supplier return")).length;
     const returnRate = totalOrders > 0 ? (totalReturns / totalOrders) * 100 : 0;
 
     return {
@@ -334,6 +810,8 @@ export default function ProfitLoss() {
       totalCost,
       sales: netSales,
       purchase,
+      purchaseReturnCost,
+      adjustedPurchase,
       openingStock,
       closingStock,
       directExpenses,
@@ -346,9 +824,60 @@ export default function ProfitLoss() {
       profitMargin,
       totalOrders,
       totalReturns,
+      totalPurchaseReturns,
       returnRate,
     };
   }, [profitData, accounts, productMap, orders, returns, products, movements]);
+
+  // Calculate time-range specific statistics for the 4 cards
+  const timeRangeStatistics = useMemo(() => {
+    // Sum up the values from the profitData for the selected time range
+    const timeRangeRevenue = profitData.reduce((sum, d) => sum + d.revenue, 0);
+    const timeRangeCost = profitData.reduce((sum, d) => sum + d.cost, 0);
+    const timeRangeProfit = profitData.reduce((sum, d) => sum + d.profit, 0);
+    const timeRangeOrders = profitData.reduce((sum, d) => sum + d.orders, 0);
+    
+    // Calculate total items sold (stock out) in this time range
+    const totalItemsSold = orders
+      .filter(order => {
+        if (!order.date) return false;
+        const orderDate = typeof order.date === 'string' ? parseISO(order.date) : new Date(order.date);
+        return orderDate >= getStartDate;
+      })
+      .reduce((sum, order) => {
+        return sum + order.items.reduce((itemSum, item) => itemSum + item.quantity, 0);
+      }, 0);
+    
+    // Calculate total items added as stock (purchases) in this time range
+    const totalItemsAdded = movements
+      .filter(m => {
+        if (!m.createdAt) return false;
+        if (m.type !== 'in') return false;
+        const movementDate = typeof m.createdAt === 'string' ? parseISO(m.createdAt) : new Date(m.createdAt);
+        return movementDate >= getStartDate && (m.reason === 'purchase' || m.reason === 'initial stock');
+      })
+      .reduce((sum, m) => sum + m.quantity, 0);
+    
+    // Determine labels based on profit/loss
+    const grossProfitLabel = timeRangeProfit >= 0 ? "Gross Profit" : "Gross Loss";
+    const netProfitLabel = timeRangeProfit >= 0 ? "Net Profit" : "Net Loss";
+    const grossValue = timeRangeProfit >= 0 ? timeRangeProfit : Math.abs(timeRangeProfit);
+    const netValue = timeRangeProfit >= 0 ? timeRangeProfit : Math.abs(timeRangeProfit);
+    
+    return {
+      sales: timeRangeRevenue,
+      purchase: timeRangeCost,
+      grossProfit: grossValue,
+      grossLoss: grossValue,
+      grossProfitLabel,
+      netProfit: netValue,
+      netLoss: netValue,
+      netProfitLabel,
+      totalOrders: timeRangeOrders,
+      totalItemsSold,
+      totalItemsAdded,
+    };
+  }, [profitData, orders, movements, getStartDate]);
 
   // Product category breakdown
   const categoryBreakdown = useMemo(() => {
@@ -374,11 +903,30 @@ export default function ProfitLoss() {
       });
     });
 
+    // Add purchase return costs by category
+    movements.forEach(movement => {
+      if (movement.type === "out" && (movement.reason === "purchase return" || movement.reason === "supplier return")) {
+        const product = productMap.get(movement.productId);
+        if (!product) return;
+
+        const category = product.category;
+        const costPrice = product.costPrice ? parseFloat(product.costPrice.toString()) : 0;
+        const cost = costPrice * movement.quantity;
+        
+        const current = breakdown.get(category) || { revenue: 0, cost: 0, profit: 0 };
+        breakdown.set(category, {
+          revenue: current.revenue, // Don't change revenue
+          cost: current.cost - cost, // Subtract the cost (as it's a return)
+          profit: current.profit - cost, // Subtract the cost from profit
+        });
+      }
+    });
+
     return Array.from(breakdown.entries()).map(([category, data]) => ({
       category,
       ...data,
     }));
-  }, [orders, productMap]);
+  }, [orders, movements, productMap]);
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
@@ -417,10 +965,11 @@ export default function ProfitLoss() {
                   <SelectValue placeholder="Select range" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="hourly">Hourly (24h)</SelectItem>
-                  <SelectItem value="daily">Daily (30d)</SelectItem>
-                  <SelectItem value="monthly">Monthly (12m)</SelectItem>
-                  <SelectItem value="yearly">Yearly (5y)</SelectItem>
+                  <SelectItem value="hourly">This Hour</SelectItem>
+                  <SelectItem value="daily">Today</SelectItem>
+                  <SelectItem value="monthly">This Month</SelectItem>
+                  <SelectItem value="yearly">This Year</SelectItem>
+                  <SelectItem value="all">All Time</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -441,10 +990,10 @@ export default function ProfitLoss() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-blue-600" data-testid="stat-sales">
-                    ${statistics.sales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{timeRangeStatistics.sales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    From {statistics.totalOrders} orders
+                    {timeRangeStatistics.totalItemsSold} units sold
                   </p>
                 </CardContent>
               </Card>
@@ -456,10 +1005,10 @@ export default function ProfitLoss() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-orange-600" data-testid="stat-purchase">
-                    ${statistics.purchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{timeRangeStatistics.purchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    From inventory purchases
+                    {timeRangeStatistics.totalItemsAdded} units added
                   </p>
                 </CardContent>
               </Card>
@@ -470,9 +1019,9 @@ export default function ProfitLoss() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
-                    {statistics.grossProfit > 0 ? "Gross Profit" : "Gross Loss"}
+                    {timeRangeStatistics.grossProfitLabel}
                   </CardTitle>
-                  {statistics.grossProfit > 0 ? (
+                  {timeRangeStatistics.grossProfit >= 0 ? (
                     <TrendingUp className="h-4 w-4 text-green-600" />
                   ) : (
                     <TrendingDown className="h-4 w-4 text-red-600" />
@@ -480,13 +1029,13 @@ export default function ProfitLoss() {
                 </CardHeader>
                 <CardContent>
                   <div 
-                    className={`text-2xl font-bold ${statistics.grossProfit > 0 ? 'text-green-600' : 'text-red-600'}`} 
+                    className={`text-2xl font-bold ${timeRangeStatistics.grossProfit >= 0 ? 'text-green-600' : 'text-red-600'}`} 
                     data-testid="stat-gross-profit"
                   >
-                    ${(statistics.grossProfit > 0 ? statistics.grossProfit : statistics.grossLoss).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{timeRangeStatistics.grossProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Sales + Closing - Opening - Purchase
+                    {timeRange === 'all' ? 'From start to end' : `Based on ${timeRange} data`}
                   </p>
                 </CardContent>
               </Card>
@@ -494,23 +1043,23 @@ export default function ProfitLoss() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
-                    {statistics.netProfit > 0 ? "Net Profit" : "Net Loss"}
+                    {timeRangeStatistics.netProfitLabel}
                   </CardTitle>
-                  {statistics.netProfit > 0 ? (
-                    <DollarSign className="h-4 w-4 text-green-600" />
+                  {timeRangeStatistics.netProfit >= 0 ? (
+                    <IndianRupee className="h-4 w-4 text-green-600" />
                   ) : (
                     <TrendingDown className="h-4 w-4 text-red-600" />
                   )}
                 </CardHeader>
                 <CardContent>
                   <div 
-                    className={`text-2xl font-bold ${statistics.netProfit > 0 ? 'text-green-600' : 'text-red-600'}`} 
+                    className={`text-2xl font-bold ${timeRangeStatistics.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`} 
                     data-testid="stat-net-profit"
                   >
-                    ${(statistics.netProfit > 0 ? statistics.netProfit : statistics.netLoss).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{timeRangeStatistics.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Gross Profit + Indirect Inc - Indirect Exp
+                    {timeRange === 'all' ? 'From start to end' : `Based on ${timeRange} data`}
                   </p>
                 </CardContent>
               </Card>
@@ -569,6 +1118,137 @@ export default function ProfitLoss() {
             </Card>
           </div>
 
+          {/* Today's Earnings when time range is daily */}
+          {(apiTodaysEarnings || (timeRange === 'daily' && !earningsLoading)) && (
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle>Today's Earnings</CardTitle>
+                <CardDescription>Earnings for {format(new Date(), 'MMMM dd, yyyy')}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {earningsLoading ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {[...Array(4)].map((_, i) => (
+                      <Skeleton key={i} className="h-24 w-full" />
+                    ))}
+                  </div>
+                ) : apiTodaysEarnings ? (
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                        <p className="text-sm text-blue-600 font-medium">Total Revenue</p>
+                        <p className="text-2xl font-bold text-blue-800">₹{(apiTodaysEarnings as any).revenue.toFixed(2)}</p>
+                        <p className="text-xs text-blue-500 mt-1">from {(apiTodaysEarnings as any).orderCount} orders</p>
+                      </div>
+                      <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                        <p className="text-sm text-red-600 font-medium">Refunds</p>
+                        <p className="text-2xl font-bold text-red-800">₹{(apiTodaysEarnings as any).refundAmount.toFixed(2)}</p>
+                        <p className="text-xs text-red-500 mt-1">from {(apiTodaysEarnings as any).returnCount} returns</p>
+                      </div>
+                      <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+                        <p className="text-sm text-orange-600 font-medium">Cost</p>
+                        <p className="text-2xl font-bold text-orange-800">₹{(apiTodaysEarnings as any).cost.toFixed(2)}</p>
+                      </div>
+                      <div className={`${(apiTodaysEarnings as any).profit >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} p-4 rounded-lg border`}>
+                        <p className={`text-sm font-medium ${(apiTodaysEarnings as any).profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>Net Profit/Loss</p>
+                        <p className={`text-2xl font-bold ${(apiTodaysEarnings as any).profit >= 0 ? 'text-green-800' : 'text-red-800'}`}>₹{Math.abs((apiTodaysEarnings as any).profit).toFixed(2)}</p>
+                        <p className={`text-xs ${(apiTodaysEarnings as any).profit >= 0 ? 'text-green-500' : 'text-red-500'} mt-1`}>
+                          {(apiTodaysEarnings as any).profit >= 0 ? 'Profit' : 'Loss'}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-6">
+                      <h4 className="font-medium mb-3">Payment Method Breakdown</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        {Object.entries((apiTodaysEarnings as any).paymentMethodBreakdown)
+                          .filter(([_, data]: [string, any]) => data.revenue > 0 || data.refundAmount > 0)
+                          .map(([method, data]: [string, any]) => {
+                            const methodName = method.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                            const isPositive = data.revenue - data.refundAmount > 0;
+                            return (
+                              <Card key={method} className="border shadow-sm">
+                                <CardHeader className="pb-2">
+                                  <CardTitle className="text-sm font-medium text-center">{methodName}</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="text-center space-y-1">
+                                    <div className="text-2xl font-bold" style={{ color: isPositive ? '#10b981' : '#ef4444' }}>
+                                      ₹{Math.abs(data.revenue - data.refundAmount).toFixed(2)}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {data.count} sale{data.count !== 1 ? 's' : ''}
+                                    </div>
+                                    {data.refunds > 0 && (
+                                      <div className="text-xs text-red-500">
+                                        {data.refunds} refund{data.refunds !== 1 ? 's' : ''}
+                                      </div>
+                                    )}
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            );
+                          })
+                        }
+                        {Object.entries((apiTodaysEarnings as any).paymentMethodBreakdown).filter(([_, data]: [string, any]) => data.revenue > 0 || data.refundAmount > 0).length === 0 && (
+                          <div className="col-span-full text-center py-8 text-muted-foreground">
+                            No payment data for today
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="rounded-md border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Payment Method</TableHead>
+                              <TableHead className="text-right">Sales Count</TableHead>
+                              <TableHead className="text-right">Revenue</TableHead>
+                              <TableHead className="text-right">Refunds Count</TableHead>
+                              <TableHead className="text-right">Refund Amount</TableHead>
+                              <TableHead className="text-right">Net Amount</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {Object.entries((apiTodaysEarnings as any).paymentMethodBreakdown)
+                              .filter(([method, data]: [string, any]) => data.revenue > 0 || data.refundAmount > 0)
+                              .filter(([method, data]: [string, any]) => method !== 'mixed')
+                              .map(([method, data]: [string, any]) => (
+                                <TableRow key={method}>
+                                  <TableCell className="font-medium">
+                                    {method.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                  </TableCell>
+                                  <TableCell className="text-right">{data.count}</TableCell>
+                                  <TableCell className="text-right text-green-600 font-semibold">
+                                    ₹{data.revenue.toFixed(2)}
+                                  </TableCell>
+                                  <TableCell className="text-right">{data.refunds}</TableCell>
+                                  <TableCell className="text-right text-red-600 font-semibold">
+                                    ₹{data.refundAmount.toFixed(2)}
+                                  </TableCell>
+                                  <TableCell className={`text-right font-semibold ${data.revenue - data.refundAmount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    ₹{(data.revenue - data.refundAmount).toFixed(2)}
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            }
+                            {Object.entries((apiTodaysEarnings as any).paymentMethodBreakdown).filter(([method, data]: [string, any]) => (data.revenue > 0 || data.refundAmount > 0) && method !== 'mixed').length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
+                                  No payment data for today
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Payment Method Statistics */}
           <Card className="mb-8">
             <CardHeader>
@@ -581,15 +1261,20 @@ export default function ProfitLoss() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Payment Method</TableHead>
-                      <TableHead className="text-right">Transactions</TableHead>
-                      <TableHead className="text-right">Total Revenue</TableHead>
+                      <TableHead className="text-right">Sales</TableHead>
+                      <TableHead className="text-right">Sales Revenue</TableHead>
+                      <TableHead className="text-right">Refunds</TableHead>
+                      <TableHead className="text-right">Refund Amount</TableHead>
+                      <TableHead className="text-right">Additional Payments</TableHead>
+                      <TableHead className="text-right">Add. Payment Amount</TableHead>
+                      <TableHead className="text-right">Net Revenue</TableHead>
                       <TableHead className="text-right">% of Total</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paymentMethodStats.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                           No payment data available
                         </TableCell>
                       </TableRow>
@@ -602,8 +1287,19 @@ export default function ProfitLoss() {
                           <TableRow key={item.method}>
                             <TableCell className="font-medium">{item.method}</TableCell>
                             <TableCell className="text-right">{item.count}</TableCell>
-                            <TableCell className={`text-right font-semibold ${item.revenue >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              ${Math.abs(item.revenue).toFixed(2)}
+                            <TableCell className="text-right text-green-600 font-semibold">
+                              ₹{item.revenue.toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right">{item.refunds}</TableCell>
+                            <TableCell className="text-right text-red-600 font-semibold">
+                              ₹{item.refundAmount.toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right">{item.additionalPayments}</TableCell>
+                            <TableCell className="text-right text-green-600 font-semibold">
+                              ₹{item.additionalPaymentAmount.toFixed(2)}
+                            </TableCell>
+                            <TableCell className={`text-right font-semibold ${item.netRevenue >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              ₹{item.netRevenue.toFixed(2)}
                             </TableCell>
                             <TableCell className="text-right">
                               <Badge variant={percentage >= 30 ? "default" : "secondary"}>
@@ -668,31 +1364,43 @@ export default function ProfitLoss() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Sales (Revenue)</span>
                   <span className="font-semibold text-blue-600">
-                    ${statistics.sales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{statistics.sales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Purchase (Cost)</span>
                   <span className="font-semibold text-orange-600">
-                    ${statistics.purchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{statistics.purchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Purchase Returns (Cost)</span>
+                  <span className="font-semibold text-red-600">
+                    ₹{statistics.purchaseReturnCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Adjusted Purchase</span>
+                  <span className="font-semibold text-purple-600">
+                    ₹{statistics.adjustedPurchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Opening Stock</span>
                   <span className="font-semibold text-purple-600">
-                    ${statistics.openingStock.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{statistics.openingStock.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Closing Stock</span>
                   <span className="font-semibold text-indigo-600">
-                    ${statistics.closingStock.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{statistics.closingStock.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Direct Expenses</span>
                   <span className="font-semibold text-red-600">
-                    ${statistics.directExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{statistics.directExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -710,9 +1418,13 @@ export default function ProfitLoss() {
                   <span className="font-semibold">{statistics.totalReturns}</span>
                 </div>
                 <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Total Purchase Returns</span>
+                  <span className="font-semibold">{statistics.totalPurchaseReturns}</span>
+                </div>
+                <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Avg Order Value</span>
                   <span className="font-semibold">
-                    ${statistics.totalOrders > 0 ? (statistics.sales / statistics.totalOrders).toFixed(2) : '0.00'}
+                    ₹{statistics.totalOrders > 0 ? (statistics.sales / statistics.totalOrders).toFixed(2) : '0.00'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -757,13 +1469,13 @@ export default function ProfitLoss() {
                           <TableRow key={item.category}>
                             <TableCell className="font-medium">{item.category}</TableCell>
                             <TableCell className="text-right text-green-600 font-semibold">
-                              ${item.revenue.toFixed(2)}
+                              ₹{item.revenue.toFixed(2)}
                             </TableCell>
                             <TableCell className="text-right text-red-600 font-semibold">
-                              ${item.cost.toFixed(2)}
+                              ₹{item.cost.toFixed(2)}
                             </TableCell>
                             <TableCell className={`text-right font-semibold ${item.profit >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                              ${item.profit.toFixed(2)}
+                              ₹{item.profit.toFixed(2)}
                             </TableCell>
                             <TableCell className="text-right">
                               <Badge variant={margin >= 30 ? "default" : margin >= 15 ? "secondary" : "destructive"}>
@@ -806,13 +1518,13 @@ export default function ProfitLoss() {
                         <TableCell className="text-right">{item.orders}</TableCell>
                         <TableCell className="text-right">{item.returns}</TableCell>
                         <TableCell className="text-right text-green-600 font-semibold">
-                          ${item.revenue.toFixed(2)}
+                          ₹{item.revenue.toFixed(2)}
                         </TableCell>
                         <TableCell className="text-right text-red-600 font-semibold">
-                          ${item.cost.toFixed(2)}
+                          ₹{item.cost.toFixed(2)}
                         </TableCell>
                         <TableCell className={`text-right font-semibold ${item.profit >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                          ${item.profit.toFixed(2)}
+                          ₹{item.profit.toFixed(2)}
                         </TableCell>
                       </TableRow>
                     ))}

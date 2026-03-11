@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { TrendingUp, TrendingDown, RefreshCw, Package, QrCode, ShoppingCart, Truck, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { TrendingUp, TrendingDown, RefreshCw, Package, QrCode, ShoppingCart, Truck, ArrowUpDown, ArrowUp, ArrowDown, FileText, FileSpreadsheet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,21 +23,10 @@ import {
 import { QRScannerDialog } from "@/components/qr-scanner-dialog";
 import { StockMovementDialog } from "@/components/stock-movement-dialog";
 import type { StockMovement, Product } from "@shared/schema";
-import { format } from "date-fns";
-import { formatInIST } from "@/lib/utils";
+// Removed date-fns format and parseISO imports as dates are now shown as raw strings
 
-type SortField = "productName" | "sku" | "category" | "available" | "sold" | "returned" | "purchased" | "initialStock";
+type SortField = "productName" | "sku" | "category" | "available" | "sold" | "returned" | "purchaseReturn" | "purchased" | "initialStock";
 type SortOrder = "asc" | "desc";
-
-interface StockStats {
-  productId: string;
-  available: number;
-  sold: number;
-  returned: number;
-  purchased: number;
-  initialStock: number;
-}
-
 export default function StockHistory() {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isStockDialogOpen, setIsStockDialogOpen] = useState(false);
@@ -110,8 +99,8 @@ export default function StockHistory() {
 
   // Calculate per-product stock statistics
   const stockStats = useMemo(() => {
-    const statsMap = new Map<string, StockStats>();
-
+    const statsMap = new Map<string, any>();
+  
     // Initialize with zeros
     products.forEach(p => {
       statsMap.set(p.id, {
@@ -119,17 +108,18 @@ export default function StockHistory() {
         available: p.stockQuantity,
         sold: 0,
         returned: 0,
+        purchaseReturn: 0,
         purchased: 0,
         initialStock: 0,
       });
     });
-
+  
     // Process stock movements to calculate initial stock, sold, returned, and purchased
     movements.forEach(m => {
       const currentStats = statsMap.get(m.productId);
       if (!currentStats) return;
       const reasonLower = m.reason.toLowerCase();
-
+  
       switch (m.type) {
         case "in":
           if (reasonLower === "initial stock") {
@@ -143,50 +133,27 @@ export default function StockHistory() {
         case "out":
           if (reasonLower === "sale") {
             currentStats.sold += m.quantity;
+          } else if (reasonLower === "purchase return" || reasonLower === "supplier return") {
+            currentStats.purchaseReturn += m.quantity;
           }
+          break;
+        case "adjustment":
+          // For adjustment movements, these are direct quantity changes
+          // Typically used for setting stock to a specific value
           break;
       }
     });
-
-    // Process orders to count sold items
-    orders.forEach(order => {
-      if (order.items && Array.isArray(order.items)) {
-        order.items.forEach((item: any) => {
-          const stats = statsMap.get(item.productId);
-          if (stats) {
-            stats.sold += item.quantity;
-          }
-        });
-      }
-    });
-
-    // Process returns to count returned items
-    returns.forEach(ret => {
-      if (ret.items && Array.isArray(ret.items)) {
-        ret.items.forEach((item: any) => {
-          const stats = statsMap.get(item.productId);
-          if (stats) {
-            stats.returned += item.quantity;
-          }
-        });
-      }
-    });
-
-    // Update available to match formula: available = initialStock + purchased + returned - sold
+  
+    // Calculate available stock using the proper formula
+    // available = initialStock + purchased - sold + returned - purchaseReturn
+    // This ensures purchase returns are properly deducted from available stock
     Array.from(statsMap.values()).forEach(stats => {
-      // If initialStock is 0, use the product's current stock quantity as initial
-      if (stats.initialStock === 0) {
-        const product = products.find(p => p.id === stats.productId);
-        if (product) {
-          stats.initialStock = product.stockQuantity;
-        }
-      }
-      stats.available = stats.initialStock + stats.purchased + stats.returned - stats.sold;
+      stats.available = stats.initialStock + stats.purchased - stats.sold + stats.returned - stats.purchaseReturn;
     });
-
+  
     return Array.from(statsMap.values());
-  }, [products, movements, orders, returns]);
-
+  }, [products, movements]);
+  
 
   // Prepare product data for the table using stock stats
   const productStockData = useMemo(() => {
@@ -197,11 +164,28 @@ export default function StockHistory() {
         available: stats?.available || 0,
         sold: stats?.sold || 0,
         returned: stats?.returned || 0,
+        purchaseReturn: stats?.purchaseReturn || 0,
         purchased: stats?.purchased || 0,
         initialStock: stats?.initialStock || 0,
       };
     });
   }, [products, stockStats]);
+
+  // Calculate statistics from the Product Stock Overview table data
+  const tableStatistics = useMemo(() => {
+    // Calculate totals from the product stock data table
+    const totalAvailable = productStockData.reduce((sum, product) => sum + product.available, 0);
+    const totalSold = productStockData.reduce((sum, product) => sum + product.sold, 0);
+    const totalReturned = productStockData.reduce((sum, product) => sum + product.returned, 0);
+    const totalPurchased = productStockData.reduce((sum, product) => sum + product.purchased, 0);
+    
+    return {
+      available: totalAvailable,
+      sold: totalSold,
+      returned: totalReturned,
+      purchased: totalPurchased,
+    };
+  }, [productStockData]);
 
   // Prepare purchased stock data for separate table
   const purchasedStockData = useMemo(() => {
@@ -224,7 +208,7 @@ export default function StockHistory() {
         type: 'order',
         data: order,
         returns: orderReturns,
-        date: order.createdAt,
+        date: order.date,
       });
     });
 
@@ -285,6 +269,10 @@ export default function StockHistory() {
         case "returned":
           aValue = a.returned;
           bValue = b.returned;
+          break;
+        case "purchaseReturn":
+          aValue = a.purchaseReturn;
+          bValue = b.purchaseReturn;
           break;
         case "purchased":
           aValue = a.purchased;
@@ -355,9 +343,103 @@ export default function StockHistory() {
     console.log("Scanned data:", scannedData);
     // For now, let's assume we can directly use it to open the stock movement dialog
     // In a real scenario, you'd fetch product details here
-    setSelectedProduct({ id: scannedData, name: `Product ${scannedData}`, sku: scannedData }); // Mock product data
+    // setSelectedProduct({ id: scannedData, productName: `Product ${scannedData}`, sku: scannedData }); // Mock product data
+    // For now, skip setting a mock product as it's not used in the dialog
     setIsStockDialogOpen(true);
     setIsScannerOpen(false);
+  };
+
+  // Function to sanitize values for CSV export
+  const sanitizeForCsv = (value: string | number) => {
+    if (value === undefined || value === null) return '';
+    const strValue = String(value);
+    // Escape double quotes by doubling them
+    let sanitized = strValue.replace(/"/g, '""');
+    // Wrap in quotes if it contains commas, quotes, or newlines
+    if (sanitized.includes(',') || sanitized.includes('"') || sanitized.includes('\n')) {
+      sanitized = `"${sanitized}"`;
+    }
+    return sanitized;
+  };
+
+  // Export functions
+  const exportToCSV = (data: any[][], filename: string) => {
+    const csvContent = data.map(row => row.map(field => `${field}`.replace(/\"/g, '"').replace(/\,/g, ',')).join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
+  const exportToExcel = (data: any[][], filename: string) => {
+    // For simplicity, we'll use the same approach as CSV but with .xlsx extension
+    // In a real application, you'd use a library like xlsx to create proper Excel files
+    const csvContent = data.map(row => row.map(field => `${field}`.replace(/\"/g, '"').replace(/\,/g, ',')).join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
+  const exportStockHistory = (format: 'csv' | 'excel') => {
+    console.log('Export function called with format:', format);
+    
+    // Headers matching the Product Stock Overview table + Created At and Updated At
+    const headers = [
+      'Product Name',
+      'SKU',
+      'Category',
+      'Available Stock',
+      'Initial Stock',
+      'Purchased',
+      'Sold',
+      'Returned',
+      'Purchase Return',
+      'Created At'
+    ];
+    
+    // Create rows from the filtered and sorted product data (same as displayed in UI)
+    const rows = filteredAndSortedProducts.map(product => {
+      const createdAtStr = product.createdAt ? new Date(product.createdAt).toISOString().replace('T', ' ').replace('Z', '') : 'N/A';
+      return [
+        sanitizeForCsv(product.productName),
+        sanitizeForCsv(product.sku),
+        sanitizeForCsv(product.category),
+        sanitizeForCsv(product.available),
+        sanitizeForCsv(product.initialStock),
+        sanitizeForCsv(product.purchased),
+        sanitizeForCsv(product.sold),
+        sanitizeForCsv(product.returned),
+        sanitizeForCsv(product.purchaseReturn),
+        sanitizeForCsv(createdAtStr)
+      ];
+    });
+    
+    const data = [headers, ...rows];
+    const filename = `stock-history-${new Date().toISOString().split('T')[0]}.${format === 'csv' ? 'csv' : 'xlsx'}`;
+    
+    console.log('Exporting data:', data);
+    console.log('Filename:', filename);
+    
+    if (format === 'csv') {
+      exportToCSV(data, filename);
+    } else {
+      exportToExcel(data, filename);
+    }
   };
 
   return (
@@ -373,13 +455,31 @@ export default function StockHistory() {
                 Track all inventory movements and changes
               </p>
             </div>
-            <Button
-              onClick={() => setIsScannerOpen(true)}
-              data-testid="button-scan-for-stock"
-            >
-              <QrCode className="h-4 w-4 mr-2" />
-              Scan to Update Stock
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => exportStockHistory('csv')}
+                className="flex items-center gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                Export (CSV)
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => exportStockHistory('excel')}
+                className="flex items-center gap-2"
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+                Export (Excel)
+              </Button>
+              <Button
+                onClick={() => setIsScannerOpen(true)}
+                data-testid="button-scan-for-stock"
+              >
+                <QrCode className="h-4 w-4 mr-2" />
+                Scan to Update Stock
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -397,7 +497,7 @@ export default function StockHistory() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold" data-testid="stat-available">
-                  {statistics.available.toLocaleString()}
+                  {tableStatistics.available.toLocaleString()}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Total units in inventory
@@ -414,7 +514,7 @@ export default function StockHistory() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-red-600" data-testid="stat-sold">
-                  {statistics.sold.toLocaleString()}
+                  {tableStatistics.sold.toLocaleString()}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Units removed from inventory
@@ -431,7 +531,7 @@ export default function StockHistory() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-blue-600" data-testid="stat-returned">
-                  {statistics.returned.toLocaleString()}
+                  {tableStatistics.returned.toLocaleString()}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Units returned to inventory
@@ -448,7 +548,7 @@ export default function StockHistory() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-green-600" data-testid="stat-purchased">
-                  {statistics.purchased.toLocaleString()}
+                  {tableStatistics.purchased.toLocaleString()}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Units added to inventory via purchase
@@ -564,12 +664,22 @@ export default function StockHistory() {
                           <SortIcon field="returned" />
                         </Button>
                       </TableHead>
+                      <TableHead className="text-right">
+                        <Button
+                          variant="ghost"
+                          onClick={() => handleSort("purchaseReturn")}
+                          className="hover:bg-transparent p-0 h-auto font-medium ml-auto flex"
+                        >
+                          Purchase Return
+                          <SortIcon field="purchaseReturn" />
+                        </Button>
+                      </TableHead>
                       </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredAndSortedProducts.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                           No products found
                         </TableCell>
                       </TableRow>
@@ -595,6 +705,9 @@ export default function StockHistory() {
                           </TableCell>
                           <TableCell className="text-right">
                             <span className="text-blue-600 font-semibold">{product.returned}</span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className="text-orange-600 font-semibold">{product.purchaseReturn}</span>
                           </TableCell>
                         </TableRow>
                       ))
@@ -681,7 +794,14 @@ export default function StockHistory() {
                                 <div>
                                   <p className="text-sm text-muted-foreground">Date</p>
                                   <p className="font-semibold">
-                                    {order.createdAt && formatInIST(new Date(order.createdAt), "MMM dd, yyyy HH:mm")}
+                                    {order.date
+                                        ? (typeof order.date === 'string'
+                                            ? order.date
+                                            : order.date.toISOString()
+                                          )
+                                            .replace('T', ' ')
+                                            .replace('Z', '')
+                                        : 'N/A'}
                                   </p>
                                 </div>
                               </div>
@@ -732,7 +852,14 @@ export default function StockHistory() {
                                       <div>
                                         <p className="text-sm text-muted-foreground">Date</p>
                                         <p className="font-semibold">
-                                          {ret.createdAt && formatInIST(new Date(ret.createdAt), "MMM dd, yyyy HH:mm")}
+                                          {ret.date
+                                              ? (typeof ret.date === 'string'
+                                                  ? ret.date
+                                                  : ret.date.toISOString()
+                                                )
+                                                  .replace('T', ' ')
+                                                  .replace('Z', '')
+                                              : 'N/A'}
                                         </p>
                                       </div>
                                     </div>
@@ -783,7 +910,14 @@ export default function StockHistory() {
                               <div>
                                 <p className="text-sm text-muted-foreground">Date</p>
                                 <p className="font-semibold">
-                                  {returnData.createdAt && formatInIST(new Date(returnData.createdAt), "MMM dd, yyyy HH:mm")}
+                                  {returnData.date
+                                      ? (typeof returnData.date === 'string'
+                                          ? returnData.date
+                                          : returnData.date.toISOString()
+                                        )
+                                          .replace('T', ' ')
+                                          .replace('Z', '')
+                                      : 'N/A'}
                                 </p>
                               </div>
                             </div>

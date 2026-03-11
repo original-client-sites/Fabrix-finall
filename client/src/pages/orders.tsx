@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Search, Package, QrCode } from "lucide-react";
+import { Plus, Search, Package, QrCode, CalendarIcon, Minus, DollarSign, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,6 +9,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CreateOrderDialog } from "@/components/create-order-dialog";
 import { OrderCard } from "@/components/order-card";
 import { QRScannerDialog } from "@/components/qr-scanner-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Label } from "@/components/ui/label";
+import { Calendar } from "@/components/ui/calendar";
+
 import type { OrderWithItems } from "@shared/schema";
 
 export default function Orders() {
@@ -16,18 +32,81 @@ export default function Orders() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"latest" | "oldest" | "amount_high" | "amount_low" | "customer_name">("latest");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+  const [minAmount, setMinAmount] = useState<string>("");
+  const [maxAmount, setMaxAmount] = useState<string>("");
+  const [paymentMethod, setPaymentMethod] = useState<string>("all");
 
   const { data: orders = [], isLoading } = useQuery<OrderWithItems[]>({
     queryKey: ["/api/orders"],
   });
 
-  const filteredOrders = orders.filter((order) => {
+  // Get unique payment methods from orders
+  const paymentMethods = Array.from(new Set(orders.map(order => order.paymentMethod))).filter(Boolean).sort();
+
+  const filteredAndSortedOrders = [...orders].filter((order) => {
     const matchesSearch =
       order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.customerName.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus =
       selectedStatus === "all" || order.status === selectedStatus;
-    return matchesSearch && matchesStatus;
+    
+    // Date range filter - normalize all dates to start of day for proper comparison
+    let matchesDate = true;
+    if (order.date) {
+      const orderDate = new Date(order.date);
+      // Normalize order date to start of day (remove time component)
+      orderDate.setHours(0, 0, 0, 0);
+      
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        if (orderDate < start) matchesDate = false;
+      }
+      
+      if (endDate && matchesDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999); // Include the entire end date
+        if (orderDate > end) matchesDate = false;
+      }
+    }
+    
+    // Amount range filter
+    const orderAmount = typeof order.totalAmount === 'number' ? order.totalAmount : parseFloat(order.totalAmount);
+    const matchesAmount = (!minAmount || orderAmount >= parseFloat(minAmount)) && 
+                        (!maxAmount || orderAmount <= parseFloat(maxAmount));
+    
+    // Payment method filter
+    const matchesPaymentMethod = paymentMethod === "all" || order.paymentMethod === paymentMethod;
+    
+    return matchesSearch && matchesStatus && matchesDate && matchesAmount && matchesPaymentMethod;
+  }).sort((a, b) => {
+    switch (sortBy) {
+      case "latest":
+        // Sort by date descending (latest first)
+        const dateA = a.date ? (a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime()) : 0;
+        const dateB = b.date ? (b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime()) : 0;
+        return dateB - dateA; // Higher timestamp first
+      case "oldest":
+        // Sort by date ascending (oldest first)
+        const dateA2 = a.date ? (a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime()) : 0;
+        const dateB2 = b.date ? (b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime()) : 0;
+        return dateA2 - dateB2; // Lower timestamp first
+      case "amount_high":
+        const amountHighA = typeof a.totalAmount === 'number' ? a.totalAmount : parseFloat(a.totalAmount);
+        const amountHighB = typeof b.totalAmount === 'number' ? b.totalAmount : parseFloat(b.totalAmount);
+        return amountHighB - amountHighA;
+      case "amount_low":
+        const amountLowA = typeof a.totalAmount === 'number' ? a.totalAmount : parseFloat(a.totalAmount);
+        const amountLowB = typeof b.totalAmount === 'number' ? b.totalAmount : parseFloat(b.totalAmount);
+        return amountLowA - amountLowB;
+      case "customer_name":
+        return a.customerName.localeCompare(b.customerName);
+      default:
+        return 0;
+    }
   });
 
   const statuses = [
@@ -102,6 +181,209 @@ export default function Orders() {
                 </Badge>
               ))}
             </div>
+
+            <div className="flex flex-wrap gap-2">
+              {/* Date Range Filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <CalendarIcon className="h-4 w-4" />
+                    Date Range
+                    {(startDate || endDate) && (
+                      <div className="flex gap-1">
+                        {startDate && (
+                          <span className="text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">
+                            From: {new Date(startDate).toLocaleDateString()}
+                          </span>
+                        )}
+                        {endDate && (
+                          <span className="text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">
+                            To: {new Date(endDate).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-80 p-4" align="start">
+                  <DropdownMenuLabel>Date Range</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="start-date">Start Date</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            id="start-date"
+                            variant="outline"
+                            className="w-full justify-start text-left font-normal mt-1"
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {startDate ? new Date(startDate).toLocaleDateString() : "Pick a date"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={startDate ? new Date(startDate) : undefined}
+                            onSelect={(date) => {
+                              if (date) {
+                                // Convert to local date string without timezone issues
+                                const year = date.getFullYear();
+                                const month = String(date.getMonth() + 1).padStart(2, '0');
+                                const day = String(date.getDate()).padStart(2, '0');
+                                setStartDate(`${year}-${month}-${day}`);
+                              } else {
+                                setStartDate("");
+                              }
+                            }}
+                            disabled={(date) => date > new Date()}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div>
+                      <Label htmlFor="end-date">End Date</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            id="end-date"
+                            variant="outline"
+                            className="w-full justify-start text-left font-normal mt-1"
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {endDate ? new Date(endDate).toLocaleDateString() : "Pick a date"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={endDate ? new Date(endDate) : undefined}
+                            onSelect={(date) => {
+                              if (date) {
+                                // Convert to local date string without timezone issues
+                                const year = date.getFullYear();
+                                const month = String(date.getMonth() + 1).padStart(2, '0');
+                                const day = String(date.getDate()).padStart(2, '0');
+                                setEndDate(`${year}-${month}-${day}`);
+                              } else {
+                                setEndDate("");
+                              }
+                            }}
+                            disabled={(date) => date > new Date()}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    {(startDate || endDate) && (
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setStartDate("");
+                          setEndDate("");
+                        }}
+                        className="w-full"
+                      >
+                        Clear Dates
+                      </Button>
+                    )}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* Amount Range Filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <DollarSign className="h-4 w-4" />
+                    Amount Range
+                    {(minAmount || maxAmount) && (
+                      <span className="ml-1 text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">
+                        {minAmount && `Min: ${minAmount}`} 
+                        {maxAmount && `Max: ${maxAmount}`}
+                      </span>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-64 p-4" align="start">
+                  <DropdownMenuLabel>Amount Range</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="min-amount">Minimum Amount</Label>
+                      <Input
+                        id="min-amount"
+                        type="number"
+                        placeholder="Min amount"
+                        value={minAmount}
+                        onChange={(e) => setMinAmount(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="max-amount">Maximum Amount</Label>
+                      <Input
+                        id="max-amount"
+                        type="number"
+                        placeholder="Max amount"
+                        value={maxAmount}
+                        onChange={(e) => setMaxAmount(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* Payment Method Filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <CreditCard className="h-4 w-4" />
+                    Payment Method
+                    {paymentMethod !== "all" && (
+                      <span className="ml-1 text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">
+                        {paymentMethod?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      </span>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-48" align="start">
+                  <DropdownMenuLabel>Payment Method</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setPaymentMethod("all")}>
+                    All Methods
+                  </DropdownMenuItem>
+                  {paymentMethods.map(method => (
+                    <DropdownMenuItem 
+                      key={method} 
+                      onClick={() => setPaymentMethod(method)}
+                    >
+                      {method?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* Sort By */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <Minus className="h-4 w-4 rotate-90" />
+                    Sort By
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuLabel>Sort By</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setSortBy("latest")}>Latest First</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSortBy("oldest")}>Oldest First</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSortBy("amount_high")}>Highest Amount</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSortBy("amount_low")}>Lowest Amount</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSortBy("customer_name")}>Customer Name</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
       </div>
@@ -110,7 +392,7 @@ export default function Orders() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground" data-testid="text-order-count">
-              {filteredOrders.length} {filteredOrders.length === 1 ? "order" : "orders"}
+              {filteredAndSortedOrders.length} {filteredAndSortedOrders.length === 1 ? "order" : "orders"}
             </p>
           </div>
 
@@ -131,7 +413,7 @@ export default function Orders() {
                 </Card>
               ))}
             </div>
-          ) : filteredOrders.length === 0 ? (
+          ) : filteredAndSortedOrders.length === 0 ? (
             <Card className="border-dashed">
               <CardContent className="flex flex-col items-center justify-center py-16 text-center">
                 <div className="rounded-full bg-muted p-6 mb-4">
@@ -155,7 +437,7 @@ export default function Orders() {
             </Card>
           ) : (
             <div className="flex flex-col gap-4">
-              {filteredOrders.map((order) => (
+              {filteredAndSortedOrders.map((order) => (
                 <OrderCard key={order.id} order={order} />
               ))}
             </div>

@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { format } from "date-fns";
-import { formatInIST } from "@/lib/utils";
-import { Calendar, Package, User, Mail, Phone, Download, RotateCcw, FileText } from "lucide-react";
+import { format, parseISO } from 'date-fns';
+import { Calendar, Package, User, Mail, Phone, Download, RotateCcw, FileText, MessageCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -126,12 +125,19 @@ export function OrderCard({ order }: OrderCardProps) {
                   <User className="h-3.5 w-3.5" />
                   <span data-testid={`text-customer-${order.id}`}>{order.customerName}</span>
                 </div>
-                {order.createdAt && (
+                {order.date && (
                   <div className="flex items-center gap-1.5">
                     <Calendar className="h-3.5 w-3.5" />
-                    <span data-testid={`text-date-${order.id}`}>
-                      {order.createdAt ? formatInIST(new Date(order.createdAt), "MMM dd, yyyy") : 'N/A'}
-                    </span>
+                  <span data-testid={`text-date-${order.id}`}>
+                    {order.date
+                      ? (typeof order.date === 'string'
+                          ? order.date
+                          : order.date.toISOString()
+                        )
+                          .replace('T', ' ')
+                          .replace('Z', '')
+                      : 'N/A'}
+                  </span>
                   </div>
                 )}
               </div>
@@ -141,13 +147,19 @@ export function OrderCard({ order }: OrderCardProps) {
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 lg:gap-6">
             <div>
               <p className="text-sm text-muted-foreground mb-1">Total Amount</p>
-              <p className="text-2xl font-bold" data-testid={`text-total-${order.id}`}>${order.totalAmount}</p>
+              <p className="text-2xl font-bold" data-testid={`text-total-${order.id}`}>₹{order.totalAmount?.toString()}</p>
+              {order.discountAmount && parseFloat(order.discountAmount?.toString() || '0') > 0 && (
+                <div className="text-sm mt-1">
+                  <p className="text-muted-foreground line-through">Subtotal: ₹{order.subTotal?.toString()}</p>
+                  <p className="text-green-600 font-medium">Discount: -₹{order.discountAmount?.toString()}{order.discountPercentage && parseFloat(order.discountPercentage?.toString() || '0') > 0 && ` (${order.discountPercentage}%)`}</p>
+                </div>
+              )}
             </div>
             <div className="w-px h-12 bg-border hidden sm:block" />
             <div>
               <p className="text-sm text-muted-foreground mb-1">Items</p>
               <p className="text-lg font-semibold" data-testid={`text-items-count-${order.id}`}>
-                {order.items.length} {order.items.length === 1 ? "item" : "items"}
+                {`${order.items.reduce((total, item) => total + item.quantity, 0)} ${order.items.reduce((total, item) => total + item.quantity, 0) === 1 ? "item" : "items"}`}
               </p>
             </div>
             <div>
@@ -164,9 +176,21 @@ export function OrderCard({ order }: OrderCardProps) {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Payment Method</p>
-                <p className="font-semibold capitalize">
-                  {(order.paymentMethod || 'cash').replace(/_/g, ' ')}
-                </p>
+                <div className="flex flex-col">
+                  <p className="font-semibold capitalize">
+                    {(order.paymentMethod || 'cash').replace(/_/g, ' ')}
+                  </p>
+                  {order.paymentMethod === 'mixed' && order.payments && order.payments.length > 0 && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {order.payments.map((payment, idx) => (
+                        <div key={idx} className="flex justify-between">
+                          <span className="capitalize">{payment.paymentMethod.replace(/_/g, ' ')}:</span>
+                          <span>₹{typeof payment.amount === 'number' ? payment.amount.toFixed(2) : parseFloat(payment.amount?.toString() || '0').toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
           </div>
         </div>
@@ -188,8 +212,8 @@ export function OrderCard({ order }: OrderCardProps) {
                     </span>
                   </div>
                   <div className="flex items-center gap-4 flex-shrink-0">
-                    <span className="text-muted-foreground">Qty: {item.quantity}</span>
-                    <span className="font-medium min-w-[80px] text-right">${item.subtotal}</span>
+                    <span className="text-muted-foreground">Qty: {item.quantity?.toString()}</span>
+                    <span className="font-medium min-w-[80px] text-right">₹{item.subtotal?.toString()}</span>
                   </div>
                 </div>
               ))}
@@ -218,7 +242,7 @@ export function OrderCard({ order }: OrderCardProps) {
                       </Badge>
                     </div>
                     <span className="text-xs text-muted-foreground">
-                      {ret.createdAt ? formatInIST(new Date(ret.createdAt), "MMM dd, yyyy") : 'N/A'}
+                      {ret.createdAt ? format(new Date(ret.createdAt), "MMM dd, yyyy") : 'N/A'}
                     </span>
                   </div>
                   <div className="space-y-1 text-sm">
@@ -226,7 +250,7 @@ export function OrderCard({ order }: OrderCardProps) {
                       <div key={item.id} className="flex justify-between items-start">
                         <div className="flex-1">
                           <span className="text-muted-foreground">Returned: </span>
-                          <span>{item.productName} (x{item.quantity})</span>
+                          <span>{item.productName} (x{item.quantity?.toString()})</span>
                           {item.exchangeProductName && (
                             <div className="ml-2 text-xs text-blue-600">
                               ↻ Exchanged for: {item.exchangeProductName}
@@ -238,19 +262,19 @@ export function OrderCard({ order }: OrderCardProps) {
                   </div>
                   <div className="flex justify-between items-center pt-2 border-t border-border/50 text-sm">
                     <div className="space-y-1">
-                      {ret.exchangeValue && parseFloat(ret.exchangeValue) > 0 && (
+                      {ret.exchangeValue && parseFloat(ret.exchangeValue?.toString() || '0') > 0 && (
                         <div className="text-muted-foreground">
-                          Exchange Value: <span className="font-medium">${ret.exchangeValue}</span>
+                          Exchange Value: <span className="font-medium">₹{ret.exchangeValue?.toString()}</span>
                         </div>
                       )}
-                      {ret.refundAmount && parseFloat(ret.refundAmount) > 0 && (
+                      {ret.refundAmount && parseFloat(ret.refundAmount?.toString() || '0') > 0 && (
                         <div className="text-green-600">
-                          Refunded: <span className="font-semibold">${ret.refundAmount}</span>
+                          Refunded: <span className="font-semibold">₹{ret.refundAmount?.toString()}</span>
                         </div>
                       )}
-                      {ret.additionalPayment && parseFloat(ret.additionalPayment) > 0 && (
+                      {ret.additionalPayment && parseFloat(ret.additionalPayment?.toString() || '0') > 0 && (
                         <div className="text-orange-600">
-                          Additional Payment: <span className="font-semibold">${ret.additionalPayment}</span>
+                          Additional Payment: <span className="font-semibold">₹{ret.additionalPayment?.toString()}</span>
                         </div>
                       )}
                     </div>
@@ -280,6 +304,82 @@ export function OrderCard({ order }: OrderCardProps) {
           <Download className="h-4 w-4 mr-2" />
           Download Invoice
         </Button>
+        {order.customerPhone && order.customerPhone.trim() !== "" && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              try {
+                // Prepare WhatsApp message in requested format
+                const message = `Hello ${order.customerName},
+
+Thanks for visiting Fabrix and shopping with us! 👕😊
+
+Your invoice for order #${order.orderNumber} is attached here.
+Total: ₹${typeof order.totalAmount === 'number' ? order.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : parseFloat(order.totalAmount?.toString() || '0').toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+
+📍 SUPER MALL-2, FF/152, Infocity, Gandhinagar, Gujarat 382007
+
+Thanks again for your purchase—hope to see you again soon! 🙌`;
+                
+                const formData = new FormData();
+                formData.append('phoneNumber', order.customerPhone!.replace(/[^0-9]/g, ''));
+                formData.append('message', message);
+                formData.append('orderId', order.id);
+                
+                // Call WhatsApp File API endpoint
+                const response = await fetch('/api/whatsapp/send-file', {
+                  method: 'POST',
+                  body: formData
+                });
+                
+                if (!response.ok) {
+                  throw new Error('Failed to prepare WhatsApp file');
+                }
+                
+                const result = await response.json();
+                
+                // Trigger file download for WhatsApp Desktop to detect
+                // Create a temporary download link
+                const downloadLink = document.createElement('a');
+                downloadLink.href = result.downloadUrl;
+                downloadLink.download = result.fileName;
+                downloadLink.style.display = 'none';
+                document.body.appendChild(downloadLink);
+                
+                // Trigger download
+                downloadLink.click();
+                
+                // Remove the temporary link
+                setTimeout(() => {
+                  document.body.removeChild(downloadLink);
+                }, 1000);
+                
+                // Wait a moment for the file to be downloaded, then open WhatsApp
+                setTimeout(() => {
+                  // Open WhatsApp Desktop with pre-filled message
+                  window.open(result.whatsappUrl, '_blank');
+                  
+                  toast({
+                    title: "Success",
+                    description: "Invoice downloaded and WhatsApp opened. The file should be automatically available for attachment.",
+                  });
+                }, 1500);
+                
+              } catch (error) {
+                toast({
+                  title: "Error",
+                  description: "Failed to send WhatsApp file",
+                  variant: "destructive",
+                });
+              }
+            }}
+            className="flex-1"
+          >
+            <MessageCircle className="h-4 w-4 mr-2" />
+            WhatsApp
+          </Button>
+        )}
         <Button
           variant="outline"
           size="sm"

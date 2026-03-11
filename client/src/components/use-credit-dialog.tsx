@@ -5,7 +5,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { X, Plus, Search, Package, Clock } from "lucide-react";
 import { format } from "date-fns";
-import { formatInIST } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -91,16 +90,29 @@ export function UseCreditDialog({ open, onOpenChange, credit }: UseCreditDialogP
       form.setValue("customerEmail", credit.customerEmail);
       form.setValue("notes", `Store credit code: ${credit.code}`);
       
-      if (previousOrders.length > 0) {
-        const mostRecentOrder = previousOrders.sort(
-          (a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
-        )[0];
-        
-        form.setValue("customerName", mostRecentOrder.customerName);
-        if (mostRecentOrder.customerPhone) {
-          form.setValue("customerPhone", mostRecentOrder.customerPhone);
+      // Use customer name and phone from credit if available
+      if ((credit as any).customerName) {
+        form.setValue("customerName", (credit as any).customerName);
+      }
+      if ((credit as any).customerPhone) {
+        form.setValue("customerPhone", (credit as any).customerPhone);
+      }
+      
+      // Fallback to previous orders if credit doesn't have customer info
+      if (!(credit as any).customerName || !(credit as any).customerPhone) {
+        if (previousOrders.length > 0) {
+          const mostRecentOrder = previousOrders.sort(
+            (a, b) => new Date(b.date!).getTime() - new Date(a.date!).getTime()
+          )[0];
+          
+          if (!(credit as any).customerName && mostRecentOrder.customerName) {
+            form.setValue("customerName", mostRecentOrder.customerName);
+          }
+          if (!(credit as any).customerPhone && mostRecentOrder.customerPhone) {
+            form.setValue("customerPhone", mostRecentOrder.customerPhone);
+          }
+          form.setValue("status", mostRecentOrder.status as "pending" | "processing" | "shipped" | "delivered" | "cancelled");
         }
-        form.setValue("status", mostRecentOrder.status as "pending" | "processing" | "shipped" | "delivered" | "cancelled");
       }
     }
   }, [credit, open, previousOrders]);
@@ -108,7 +120,8 @@ export function UseCreditDialog({ open, onOpenChange, credit }: UseCreditDialogP
   const createMutation = useMutation({
     mutationFn: async (data: InsertOrder & { items: OrderItem[]; creditCode: string; amountUsed: string }) => {
       // Create the order first
-      const order = await apiRequest("POST", "/api/orders", data) as OrderWithItems;
+      const orderResponse = await apiRequest("POST", "/api/orders", data);
+      const order = await orderResponse.json() as OrderWithItems;
       
       // Then use the store credit
       if (data.creditCode && data.amountUsed) {
@@ -136,7 +149,7 @@ export function UseCreditDialog({ open, onOpenChange, credit }: UseCreditDialogP
             profit: additionalPayment.toFixed(2),
             customerName: data.customerName,
             customerEmail: data.customerEmail,
-            notes: `Additional payment on store credit order (Credit used: $${creditUsed.toFixed(2)})`,
+            notes: `Additional payment on store credit order (Credit used: ₹{creditUsed.toFixed(2)})`,
             fiscalYear,
             fiscalMonth,
             fiscalQuarter,
@@ -156,7 +169,7 @@ export function UseCreditDialog({ open, onOpenChange, credit }: UseCreditDialogP
         if (creditRemaining > 0.01) {
           toast({
             title: "Success",
-            description: `Order created successfully. Remaining credit: $${creditRemaining.toFixed(2)}`,
+            description: `Order created successfully. Remaining credit: ₹{creditRemaining.toFixed(2)}`,
           });
         } else {
           toast({
@@ -168,7 +181,7 @@ export function UseCreditDialog({ open, onOpenChange, credit }: UseCreditDialogP
         if (additionalPayment > 0.01) {
           toast({
             title: "Additional Payment Recorded",
-            description: `Additional payment of $${additionalPayment.toFixed(2)} recorded as direct income.`,
+            description: `Additional payment of ₹{additionalPayment.toFixed(2)} recorded as direct income.`,
           });
         }
       }
@@ -306,7 +319,7 @@ export function UseCreditDialog({ open, onOpenChange, credit }: UseCreditDialogP
     if (additionalPaid < breakdown.additionalRequired) {
       toast({
         title: "Insufficient Payment",
-        description: `Please pay the remaining amount of $${breakdown.additionalRequired.toFixed(2)}`,
+        description: `Please pay the remaining amount of ₹{breakdown.additionalRequired.toFixed(2)}`,
         variant: "destructive",
       });
       return;
@@ -343,7 +356,7 @@ export function UseCreditDialog({ open, onOpenChange, credit }: UseCreditDialogP
                   <div>
                     <p className="text-sm text-muted-foreground">Available Store Credit</p>
                     <p className="text-2xl font-bold text-green-600">
-                      ${parseFloat(credit.amount).toFixed(2)}
+                      ₹{parseFloat(credit.amount).toFixed(2)}
                     </p>
                   </div>
                   <div className="text-right">
@@ -448,7 +461,7 @@ export function UseCreditDialog({ open, onOpenChange, credit }: UseCreditDialogP
                                 <p className="font-medium truncate">{product.productName}</p>
                                 <p className="text-xs text-muted-foreground">{product.sku}</p>
                               </div>
-                              <p className="font-semibold">${product.price}</p>
+                              <p className="font-semibold">₹{product.price}</p>
                             </div>
                           </CommandItem>
                         ))}
@@ -510,7 +523,7 @@ export function UseCreditDialog({ open, onOpenChange, credit }: UseCreditDialogP
                               </Button>
                             </div>
                             <p className="font-semibold w-20 text-right">
-                              ${item.subtotal}
+                              ₹{item.subtotal}
                             </p>
                             <Button
                               type="button"
@@ -528,16 +541,16 @@ export function UseCreditDialog({ open, onOpenChange, credit }: UseCreditDialogP
                   <div className="p-4 bg-muted/50 border-t space-y-2">
                     <div className="flex justify-between text-sm">
                       <span>Order Total:</span>
-                      <span className="font-semibold">${breakdown.orderTotal.toFixed(2)}</span>
+                      <span className="font-semibold">₹{breakdown.orderTotal.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-sm text-green-600">
                       <span>Store Credit Applied:</span>
-                      <span className="font-semibold">-${breakdown.creditUsed.toFixed(2)}</span>
+                      <span className="font-semibold">-₹{breakdown.creditUsed.toFixed(2)}</span>
                     </div>
                     <div className="border-t pt-2 flex justify-between">
                       <span className="font-semibold">Additional Payment Required:</span>
                       <span className="font-bold text-lg text-red-600">
-                        ${breakdown.additionalRequired.toFixed(2)}
+                        ₹{breakdown.additionalRequired.toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -583,7 +596,7 @@ export function UseCreditDialog({ open, onOpenChange, credit }: UseCreditDialogP
                   </SelectContent>
                 </Select>
                 <p className="text-sm text-muted-foreground">
-                  Select payment method for the additional ${breakdown.additionalRequired.toFixed(2)}
+                  Select payment method for the additional ₹{breakdown.additionalRequired.toFixed(2)}
                 </p>
               </div>
             </>
@@ -602,7 +615,7 @@ export function UseCreditDialog({ open, onOpenChange, credit }: UseCreditDialogP
           <div className="border-t pt-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
               <Clock className="h-4 w-4" />
-              <span>Order Date: {formatInIST(new Date(), "MMM dd, yyyy HH:mm:ss")}</span>
+              <span>Order Date: {format(new Date(), "MMM dd, yyyy HH:mm:ss")}</span>
             </div>
             <div className="flex justify-end gap-3">
               <Button
