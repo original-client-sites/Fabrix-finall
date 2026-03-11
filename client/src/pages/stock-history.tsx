@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { TrendingUp, TrendingDown, RefreshCw, Package, QrCode, ShoppingCart, Truck, ArrowUpDown, ArrowUp, ArrowDown, FileText, FileSpreadsheet } from "lucide-react";
+import { TrendingUp, TrendingDown, RefreshCw, Package, QrCode, ShoppingCart, Truck, ArrowUpDown, ArrowUp, ArrowDown, FileText, FileSpreadsheet, CalendarIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,6 +22,21 @@ import {
 } from "@/components/ui/select";
 import { QRScannerDialog } from "@/components/qr-scanner-dialog";
 import { StockMovementDialog } from "@/components/stock-movement-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Label } from "@/components/ui/label";
+import { Calendar } from "@/components/ui/calendar";
 import type { StockMovement, Product } from "@shared/schema";
 // Removed date-fns format and parseISO imports as dates are now shown as raw strings
 
@@ -34,6 +49,8 @@ export default function StockHistory() {
   const [sortField, setSortField] = useState<SortField>("productName");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
 
   const { data: movements = [], isLoading } = useQuery<StockMovement[]>({
     queryKey: ["/api/stock-movements"],
@@ -97,9 +114,23 @@ export default function StockHistory() {
     };
   }, [movements, products, orders, returns]);
 
-  // Calculate per-product stock statistics
+  // Calculate per-product stock statistics with date range filter support
   const stockStats = useMemo(() => {
     const statsMap = new Map<string, any>();
+    
+    // Get date boundaries
+    let startDateTime: Date | null = null;
+    let endDateTime: Date | null = null;
+    
+    if (startDate) {
+      startDateTime = new Date(startDate);
+      startDateTime.setHours(0, 0, 0, 0);
+    }
+    
+    if (endDate) {
+      endDateTime = new Date(endDate);
+      endDateTime.setHours(23, 59, 59, 999);
+    }
   
     // Initialize with zeros
     products.forEach(p => {
@@ -114,10 +145,64 @@ export default function StockHistory() {
       });
     });
   
-    // Process stock movements to calculate initial stock, sold, returned, and purchased
+    // First pass: Calculate initial stock at the start of the filter period
+    // This is the stock available at the end of the day before startDate
+    if (startDateTime) {
+      // For each product, calculate stock from all movements before startDate
+      products.forEach(product => {
+        const currentStats = statsMap.get(product.id);
+        if (!currentStats) return;
+        
+        // Aggregate all movements before startDate to get opening stock
+        movements.forEach(m => {
+          if (m.productId !== product.id) return;
+          if (!m.createdAt) return;
+          
+          const movementDate = typeof m.createdAt === 'string' ? new Date(m.createdAt) : m.createdAt;
+          // Only count movements strictly before the start date
+          if (movementDate >= startDateTime) return;
+          
+          const reasonLower = m.reason.toLowerCase();
+          
+          switch (m.type) {
+            case "in":
+              if (reasonLower === "initial stock" || reasonLower === "purchase" || reasonLower === "return") {
+                currentStats.initialStock += m.quantity;
+              }
+              break;
+            case "out":
+              if (reasonLower === "sale" || reasonLower === "purchase return" || reasonLower === "supplier return") {
+                currentStats.initialStock -= m.quantity;
+              }
+              break;
+          }
+        });
+        
+        // Ensure initial stock is not negative
+        if (currentStats.initialStock < 0) {
+          currentStats.initialStock = 0;
+        }
+      });
+    }
+  
+    // Second pass: Calculate movements within the filter period
     movements.forEach(m => {
       const currentStats = statsMap.get(m.productId);
       if (!currentStats) return;
+      
+      // Apply date range filter if dates are selected
+      if (m.createdAt) {
+        const movementDate = typeof m.createdAt === 'string' ? new Date(m.createdAt) : m.createdAt;
+        
+        if (startDateTime && movementDate < startDateTime) {
+          return; // Skip movements before start date
+        }
+        
+        if (endDateTime && movementDate > endDateTime) {
+          return; // Skip movements after end date
+        }
+      }
+      
       const reasonLower = m.reason.toLowerCase();
   
       switch (m.type) {
@@ -145,14 +230,17 @@ export default function StockHistory() {
     });
   
     // Calculate available stock using the proper formula
-    // available = initialStock + purchased - sold + returned - purchaseReturn
-    // This ensures purchase returns are properly deducted from available stock
-    Array.from(statsMap.values()).forEach(stats => {
-      stats.available = stats.initialStock + stats.purchased - stats.sold + stats.returned - stats.purchaseReturn;
-    });
+    // When filter is active: available = initialStock (at period start) + purchased - sold + returned - purchaseReturn
+    // When no filter: use current stock from database
+    if (startDateTime || endDate) {
+      Array.from(statsMap.values()).forEach(stats => {
+        // Recalculate based on period starting stock
+        stats.available = stats.initialStock + stats.purchased - stats.sold + stats.returned - stats.purchaseReturn;
+      });
+    }
   
     return Array.from(statsMap.values());
-  }, [products, movements]);
+  }, [products, movements, startDate, endDate]);
   
 
   // Prepare product data for the table using stock stats
@@ -184,8 +272,9 @@ export default function StockHistory() {
       sold: totalSold,
       returned: totalReturned,
       purchased: totalPurchased,
+      hasDateRange: startDate || endDate
     };
-  }, [productStockData]);
+  }, [productStockData, startDate, endDate]);
 
   // Prepare purchased stock data for separate table
   const purchasedStockData = useMemo(() => {
@@ -561,8 +650,120 @@ export default function StockHistory() {
           <Card className="mb-8">
             <CardHeader>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <CardTitle>Product Stock Overview</CardTitle>
-                <div className="flex items-center gap-2">
+                <div>
+                  <CardTitle>Product Stock Overview</CardTitle>
+                  {(startDate || endDate) && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Showing movements from {startDate ? new Date(startDate).toLocaleDateString() : 'start'} to {endDate ? new Date(endDate).toLocaleDateString() : 'now'} (Initial Stock = available stock at period start)
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Date Range Filter */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="flex items-center gap-2">
+                        <CalendarIcon className="h-4 w-4" />
+                        Date Range
+                        {(startDate || endDate) && (
+                          <div className="flex gap-1">
+                            {startDate && (
+                              <span className="text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">
+                                From: {new Date(startDate).toLocaleDateString()}
+                              </span>
+                            )}
+                            {endDate && (
+                              <span className="text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">
+                                To: {new Date(endDate).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-auto p-4" align="end">
+                      <DropdownMenuLabel>Date Range</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <div className="space-y-3">
+                        <div>
+                          <Label htmlFor="start-date">Start Date</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                id="start-date"
+                                variant="outline"
+                                className="w-full justify-start text-left font-normal mt-1"
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {startDate ? new Date(startDate).toLocaleDateString() : "Pick a date"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={startDate ? new Date(startDate) : undefined}
+                                onSelect={(date) => {
+                                  if (date) {
+                                    const year = date.getFullYear();
+                                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                                    const day = String(date.getDate()).padStart(2, '0');
+                                    setStartDate(`${year}-${month}-${day}`);
+                                  } else {
+                                    setStartDate("");
+                                  }
+                                }}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                        <div>
+                          <Label htmlFor="end-date">End Date</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                id="end-date"
+                                variant="outline"
+                                className="w-full justify-start text-left font-normal mt-1"
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {endDate ? new Date(endDate).toLocaleDateString() : "Pick a date"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={endDate ? new Date(endDate) : undefined}
+                                onSelect={(date) => {
+                                  if (date) {
+                                    const year = date.getFullYear();
+                                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                                    const day = String(date.getDate()).padStart(2, '0');
+                                    setEndDate(`${year}-${month}-${day}`);
+                                  } else {
+                                    setEndDate("");
+                                  }
+                                }}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                        {(startDate || endDate) && (
+                          <Button
+                            variant="ghost"
+                            onClick={() => {
+                              setStartDate("");
+                              setEndDate("");
+                            }}
+                            className="w-full"
+                          >
+                            Clear Dates
+                          </Button>
+                        )}
+                      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  
+                  {/* Category Filter */}
                   <span className="text-sm text-muted-foreground">Category:</span>
                   <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                     <SelectTrigger className="w-[180px]">
@@ -633,6 +834,11 @@ export default function StockHistory() {
                           Initial Stock
                           <SortIcon field="initialStock" />
                         </Button>
+                        {startDate || endDate ? (
+                          <p className="text-xs text-muted-foreground mt-1">At Period Start</p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground mt-1">All Time</p>
+                        )}
                       </TableHead>
                       <TableHead className="text-right">
                         <Button
