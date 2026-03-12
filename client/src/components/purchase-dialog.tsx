@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Package, ShoppingCart, RotateCcw } from "lucide-react";
 import {
   Dialog,
@@ -42,6 +42,68 @@ type PurchaseFormData = z.infer<typeof purchaseFormSchema>;
 export function PurchaseDialog({ open, onOpenChange, product }: PurchaseDialogProps) {
   const { toast } = useToast();
   const [movementType, setMovementType] = useState<"purchase" | "purchaseReturn">("purchase");
+
+  // Fetch movements to calculate available stock
+  const { data: movements = [] } = useQuery<any[]>({
+    queryKey: ["/api/stock-movements"],
+  });
+
+  // Calculate available stock using the same logic as stock history table
+  const calculatedAvailableStock = useMemo(() => {
+    if (!product) return 0;
+    
+    // Get all movements for this product
+    const productMovements = movements.filter(m => m.productId === product.id);
+    
+    // Calculate: Available = Initial Stock + Purchased + Returned - Sold - Purchase Return
+    let initialStock = 0;
+    let purchased = 0;
+    let returned = 0;
+    let sold = 0;
+    let purchaseReturn = 0;
+    
+    productMovements.forEach(m => {
+      const reasonLower = m.reason.toLowerCase();
+      
+      switch (m.type) {
+        case "in":
+          if (reasonLower.includes("initial stock")) {
+            initialStock += m.quantity;
+          } else if (reasonLower.includes("purchase")) {
+            purchased += m.quantity;
+          } else if (reasonLower.includes("return")) {
+            returned += m.quantity;
+          } else {
+            purchased += m.quantity;
+          }
+          break;
+        case "out":
+          if (reasonLower.includes("sale")) {
+            sold += m.quantity;
+          } else if (reasonLower.includes("purchase return") || reasonLower.includes("supplier return")) {
+            purchaseReturn += m.quantity;
+          } else {
+            sold += m.quantity;
+          }
+          break;
+        case "adjustment":
+          // Treat adjustment as reset - add the difference
+          const currentCalculated = initialStock + purchased + returned - sold - purchaseReturn;
+          const difference = m.quantity - currentCalculated;
+          if (difference > 0) {
+            // Positive adjustment adds to stock
+            purchased += difference;
+          } else {
+            // Negative adjustment reduces stock (treat as additional sold)
+            sold += Math.abs(difference);
+          }
+          break;
+      }
+    });
+    
+    const available = initialStock + purchased + returned - sold - purchaseReturn;
+    return Math.max(0, available); // Ensure non-negative
+  }, [product, movements]);
 
   const form = useForm<PurchaseFormData>({
     resolver: zodResolver(purchaseFormSchema),
@@ -141,7 +203,7 @@ export function PurchaseDialog({ open, onOpenChange, product }: PurchaseDialogPr
                 </h3>
                 <p className="text-sm text-muted-foreground font-mono">SKU: {product.sku}</p>
                 <p className="text-sm text-muted-foreground">
-                  Current Stock: <span className="font-semibold">{product.stockQuantity}</span> units
+                  Current Stock: <span className="font-semibold">{calculatedAvailableStock}</span> units
                 </p>
               </div>
             </div>
@@ -192,8 +254,8 @@ export function PurchaseDialog({ open, onOpenChange, product }: PurchaseDialogPr
             )}
             {product && (
               <p className="text-sm text-muted-foreground">
-                {movementType === "purchase" && `New stock will be: ${product.stockQuantity + (form.watch("quantity") || 0)} units`}
-                {movementType === "purchaseReturn" && `New stock will be: ${Math.max(0, product.stockQuantity - (form.watch("quantity") || 0))} units`}
+                {movementType === "purchase" && `New stock will be: ${calculatedAvailableStock + (form.watch("quantity") || 0)} units`}
+                {movementType === "purchaseReturn" && `New stock will be: ${Math.max(0, calculatedAvailableStock - (form.watch("quantity") || 0))} units`}
               </p>
             )}
           </div>
