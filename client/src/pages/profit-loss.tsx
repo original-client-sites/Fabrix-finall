@@ -659,11 +659,133 @@ export default function ProfitLoss() {
     };
   }, [timeRange, orders, returns, accounts]);
 
-  // Calculate overall statistics
-  const statistics = useMemo(() => {
+  // Calculate period-specific statistics based on time range
+  const periodStatistics = useMemo(() => {
+    // Filter data based on selected time range
+    const now = new Date();
+    let startDate = new Date(now);
+    
+    switch (timeRange) {
+      case "hourly":
+        startDate.setHours(now.getHours() - 23);
+        break;
+      case "daily":
+        startDate = subDays(startOfDay(now), 29);
+        break;
+      case "monthly":
+        startDate = subMonths(startOfMonth(now), 11);
+        break;
+      case "yearly":
+        startDate = subYears(startOfYear(now), 4);
+        break;
+    }
+    
+    // Filter orders for the selected period
+    const periodOrders = orders.filter(o => {
+      if (!o.date) return false;
+      const orderDate = typeof o.date === 'string' ? parseISO(o.date) : new Date(o.date);
+      return startOfDay(orderDate) >= startOfDay(startDate) && startOfDay(orderDate) <= startOfDay(now);
+    });
+    
+    // Filter returns for the selected period
+    const periodReturns = returns.filter(r => {
+      if (!r.createdAt) return false;
+      const returnDate = typeof r.createdAt === 'string' ? parseISO(r.createdAt) : new Date(r.createdAt);
+      return startOfDay(returnDate) >= startOfDay(startDate) && startOfDay(returnDate) <= startOfDay(now);
+    });
+    
+    // Filter accounts for the selected period
+    const periodAccounts = accounts.filter(a => {
+      if (!a.transactionDate) return false;
+      const txDate = typeof a.transactionDate === 'string' ? parseISO(a.transactionDate) : new Date(a.transactionDate);
+      return startOfDay(txDate) >= startOfDay(startDate) && startOfDay(txDate) <= startOfDay(now);
+    });
+    
+    // Filter movements for the selected period
+    const periodMovements = movements.filter(m => {
+      if (!m.createdAt) return false;
+      const movementDate = typeof m.createdAt === 'string' ? parseISO(m.createdAt) : new Date(m.createdAt);
+      return startOfDay(movementDate) >= startOfDay(startDate) && startOfDay(movementDate) <= startOfDay(now);
+    });
+    
+    // Calculate Sales for the period
+    const sales = periodOrders.reduce((sum, order) => {
+      return sum + parseFloat(order.totalAmount.toString());
+    }, 0);
+    
+    const refundAmount = periodReturns.reduce((sum, ret) => {
+      return sum + (ret.refundAmount ? parseFloat(ret.refundAmount.toString()) : 0);
+    }, 0);
+    
+    const netSales = sales - refundAmount;
+    
+    // Calculate Purchase for the period
+    const purchase = periodAccounts
+      .filter(a => a.transactionType === "purchase")
+      .reduce((sum, a) => {
+        return sum + parseFloat(a.cost.toString());
+      }, 0);
+    
+    // Calculate purchase returns for the period
+    const purchaseReturnCost = periodMovements
+      .filter(m => m.type === "out" && (m.reason === "purchase return" || m.reason === "supplier return"))
+      .reduce((sum, m) => {
+        const product = productMap.get(m.productId);
+        const costPrice = product?.costPrice ? parseFloat(product.costPrice.toString()) : 0;
+        return sum + (costPrice * m.quantity);
+      }, 0);
+    
+    // Calculate COGS for the period
+    let cogs = 0;
+    periodOrders.forEach(order => {
+      order.items.forEach(item => {
+        const product = productMap.get(item.productId);
+        const costPrice = product?.costPrice ? parseFloat(product.costPrice.toString()) : 0;
+        cogs += costPrice * item.quantity;
+      });
+    });
+    
+    // Calculate returned cost for the period
+    let returnedCost = 0;
+    periodReturns.forEach(ret => {
+      ret.items.forEach(item => {
+        const product = productMap.get(item.productId);
+        const costPrice = product?.costPrice ? parseFloat(product.costPrice.toString()) : 0;
+        returnedCost += costPrice * item.quantity;
+      });
+    });
+    
+    // Gross Profit/Loss for the period
+    const grossProfit = netSales - (cogs - returnedCost);
+    const grossProfitValue = grossProfit > 0 ? grossProfit : 0;
+    const grossLossValue = grossProfit < 0 ? Math.abs(grossProfit) : 0;
+    
+    // Net Profit/Loss for the period (using profitData which already calculates this)
+    const netProfit = profitData.reduce((sum, d) => sum + d.profit, 0);
+    const netProfitValue = netProfit > 0 ? netProfit : 0;
+    const netLossValue = netProfit < 0 ? Math.abs(netProfit) : 0;
+    
+    return {
+      sales,
+      netSales,
+      purchase,
+      purchaseReturnCost,
+      cogs,
+      returnedCost,
+      grossProfit: grossProfitValue,
+      grossLoss: grossLossValue,
+      netProfit: netProfitValue,
+      netLoss: netLossValue,
+      orderCount: periodOrders.length,
+      returnCount: periodReturns.length,
+    };
+  }, [orders, returns, accounts, movements, productMap, timeRange, profitData]);
+
+  // Calculate overall statistics (all-time)
+  const allTimeStatistics = useMemo(() => {
     const totalRevenue = profitData.reduce((sum, d) => sum + d.revenue, 0);
     const totalCost = profitData.reduce((sum, d) => sum + d.cost, 0);
-    
+
     // Sales = Total Revenue from orders (stock out)
     const sales = orders.reduce((sum, order) => {
       return sum + parseFloat(order.totalAmount.toString());
@@ -783,8 +905,6 @@ export default function ProfitLoss() {
       returnRate,
     };
   }, [profitData, accounts, productMap, orders, returns, products, movements]);
-
-  // Product category breakdown
   const categoryBreakdown = useMemo(() => {
     const breakdown = new Map<string, { revenue: number; cost: number; profit: number }>();
 
@@ -894,10 +1014,10 @@ export default function ProfitLoss() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-blue-600" data-testid="stat-sales">
-                    ₹{statistics.sales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{periodStatistics.sales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    From {statistics.totalOrders} orders
+                    From {periodStatistics.orderCount} orders
                   </p>
                 </CardContent>
               </Card>
@@ -909,7 +1029,7 @@ export default function ProfitLoss() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-orange-600" data-testid="stat-purchase">
-                    ₹{statistics.purchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{periodStatistics.purchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     From inventory purchases
@@ -923,9 +1043,9 @@ export default function ProfitLoss() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
-                    {statistics.grossProfit > 0 ? "Gross Profit" : "Gross Loss"}
+                    {periodStatistics.grossProfit > 0 ? "Gross Profit" : "Gross Loss"}
                   </CardTitle>
-                  {statistics.grossProfit > 0 ? (
+                  {periodStatistics.grossProfit > 0 ? (
                     <TrendingUp className="h-4 w-4 text-green-600" />
                   ) : (
                     <TrendingDown className="h-4 w-4 text-red-600" />
@@ -933,13 +1053,13 @@ export default function ProfitLoss() {
                 </CardHeader>
                 <CardContent>
                   <div 
-                    className={`text-2xl font-bold ${statistics.grossProfit > 0 ? 'text-green-600' : 'text-red-600'}`} 
+                    className={`text-2xl font-bold ${periodStatistics.grossProfit > 0 ? 'text-green-600' : 'text-red-600'}`} 
                     data-testid="stat-gross-profit"
                   >
-                    ₹{(statistics.grossProfit > 0 ? statistics.grossProfit : statistics.grossLoss).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{(periodStatistics.grossProfit > 0 ? periodStatistics.grossProfit : periodStatistics.grossLoss).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Sales + Closing - Opening - Purchase
+                    Sales + Returns - COGS
                   </p>
                 </CardContent>
               </Card>
@@ -947,9 +1067,9 @@ export default function ProfitLoss() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
-                    {statistics.netProfit > 0 ? "Net Profit" : "Net Loss"}
+                    {periodStatistics.netProfit > 0 ? "Net Profit" : "Net Loss"}
                   </CardTitle>
-                  {statistics.netProfit > 0 ? (
+                  {periodStatistics.netProfit > 0 ? (
                     <IndianRupee className="h-4 w-4 text-green-600" />
                   ) : (
                     <TrendingDown className="h-4 w-4 text-red-600" />
@@ -957,13 +1077,13 @@ export default function ProfitLoss() {
                 </CardHeader>
                 <CardContent>
                   <div 
-                    className={`text-2xl font-bold ${statistics.netProfit > 0 ? 'text-green-600' : 'text-red-600'}`} 
+                    className={`text-2xl font-bold ${periodStatistics.netProfit > 0 ? 'text-green-600' : 'text-red-600'}`} 
                     data-testid="stat-net-profit"
                   >
-                    ₹{(statistics.netProfit > 0 ? statistics.netProfit : statistics.netLoss).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{(periodStatistics.netProfit > 0 ? periodStatistics.netProfit : periodStatistics.netLoss).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Gross Profit + Indirect Inc - Indirect Exp
+                    Total Revenue - Total Expenses
                   </p>
                 </CardContent>
               </Card>
@@ -1184,8 +1304,8 @@ export default function ProfitLoss() {
                       </TableRow>
                     ) : (
                       paymentMethodStats.map((item) => {
-                        const percentage = statistics.totalRevenue > 0 
-                          ? (item.revenue / statistics.totalRevenue) * 100 
+                        const percentage = allTimeStatistics.totalRevenue > 0 
+                          ? (item.revenue / allTimeStatistics.totalRevenue) * 100 
                           : 0;
                         return (
                           <TableRow key={item.method}>
@@ -1268,74 +1388,73 @@ export default function ProfitLoss() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Sales (Revenue)</span>
                   <span className="font-semibold text-blue-600">
-                    ₹{statistics.sales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{periodStatistics.sales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Purchase (Cost)</span>
                   <span className="font-semibold text-orange-600">
-                    ₹{statistics.purchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{periodStatistics.purchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Purchase Returns (Cost)</span>
                   <span className="font-semibold text-red-600">
-                    ₹{statistics.purchaseReturnCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{periodStatistics.purchaseReturnCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Adjusted Purchase</span>
+                  <span className="text-sm text-muted-foreground">COGS</span>
                   <span className="font-semibold text-purple-600">
-                    ₹{statistics.adjustedPurchase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Opening Stock</span>
-                  <span className="font-semibold text-purple-600">
-                    ₹{statistics.openingStock.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Closing Stock</span>
-                  <span className="font-semibold text-indigo-600">
-                    ₹{statistics.closingStock.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Direct Expenses</span>
-                  <span className="font-semibold text-red-600">
-                    ₹{statistics.directExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₹{(periodStatistics.cogs - periodStatistics.returnedCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Return Rate</span>
-                  <Badge variant={statistics.returnRate > 10 ? "destructive" : "secondary"}>
-                    {statistics.returnRate.toFixed(2)}%
+                  <Badge variant={periodStatistics.returnCount > 0 && periodStatistics.orderCount > 0 ? (periodStatistics.returnCount / periodStatistics.orderCount * 100) > 10 ? "destructive" : "secondary" : "secondary"}>
+                    {periodStatistics.orderCount > 0 ? ((periodStatistics.returnCount / periodStatistics.orderCount) * 100).toFixed(2) : '0.00'}%
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Total Orders</span>
-                  <span className="font-semibold">{statistics.totalOrders}</span>
+                  <span className="font-semibold">{periodStatistics.orderCount}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Total Returns</span>
-                  <span className="font-semibold">{statistics.totalReturns}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Total Purchase Returns</span>
-                  <span className="font-semibold">{statistics.totalPurchaseReturns}</span>
+                  <span className="font-semibold">{periodStatistics.returnCount}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Avg Order Value</span>
                   <span className="font-semibold">
-                    ₹{statistics.totalOrders > 0 ? (statistics.sales / statistics.totalOrders).toFixed(2) : '0.00'}
+                    ₹{periodStatistics.orderCount > 0 ? (periodStatistics.sales / periodStatistics.orderCount).toFixed(2) : '0.00'}
                   </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Net Margin</span>
-                  <Badge variant="outline">
-                    {statistics.profitMargin.toFixed(2)}%
-                  </Badge>
+                
+                {/* All-time metrics */}
+                <div className="mt-6 pt-4 border-t">
+                  <h4 className="text-sm font-medium mb-3">All-Time Metrics</h4>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Opening Stock</span>
+                      <span className="font-semibold text-purple-600">
+                        ₹{allTimeStatistics.openingStock.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Closing Stock</span>
+                      <span className="font-semibold text-indigo-600">
+                        ₹{allTimeStatistics.closingStock.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Total Orders (All Time)</span>
+                      <span className="font-semibold">{allTimeStatistics.totalOrders}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Total Returns (All Time)</span>
+                      <span className="font-semibold">{allTimeStatistics.totalReturns}</span>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
