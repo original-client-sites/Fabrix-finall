@@ -29,7 +29,7 @@ import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Cart
 import type { Product, OrderWithItems, ReturnWithItems, StockMovement, Account } from "@shared/schema.mysql";
 import { format, parseISO, startOfDay, startOfHour, startOfMonth, startOfYear, subDays, subMonths, subYears } from "date-fns";
 
-type TimeRange = "hourly" | "daily" | "monthly" | "yearly" | "all";
+type TimeRange = "daily" | "weekly" | "monthly" | "yearly" | "all";
 
 interface ProfitData {
   period: string;
@@ -122,27 +122,22 @@ export default function ProfitLoss() {
   // Calculate the start date based on time range
   const getStartDate = useMemo(() => {
     const now = new Date();
+    const d = new Date(now);
     switch (timeRange) {
-      case "hourly":
-        // Start of current hour
-        const startOfHour = new Date(now);
-        startOfHour.setMinutes(0, 0, 0);
-        return startOfHour;
       case "daily":
-        // Start of today
-        const startOfDay = new Date(now);
-        startOfDay.setHours(0, 0, 0, 0);
-        return startOfDay;
+        d.setHours(0, 0, 0, 0);
+        return d;
+      case "weekly":
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
+        d.setDate(diff);
+        d.setHours(0, 0, 0, 0);
+        return d;
       case "monthly":
-        // Start of current month
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        return startOfMonth;
+        return new Date(now.getFullYear(), now.getMonth(), 1);
       case "yearly":
-        // Start of current year
-        const startOfYear = new Date(now.getFullYear(), 0, 1);
-        return startOfYear;
+        return new Date(now.getFullYear(), 0, 1);
       case "all":
-        // From beginning
         return new Date(0);
       default:
         return new Date(0);
@@ -159,7 +154,6 @@ export default function ProfitLoss() {
 
     // If timeRange is 'all', show monthly data from the beginning
     if (timeRange === 'all') {
-      // Find the earliest transaction date
       const allDates = [
         ...orders.filter(o => o.date).map(o => typeof o.date === 'string' ? parseISO(o.date!) : new Date(o.date!)),
         ...returns.filter(r => r.createdAt).map(r => new Date(r.createdAt!)),
@@ -169,9 +163,10 @@ export default function ProfitLoss() {
       if (allDates.length > 0) {
         const earliestDate = new Date(Math.min(...allDates.map(d => d.getTime())));
         startDate = new Date(earliestDate.getFullYear(), earliestDate.getMonth(), 1);
+      } else {
+        startDate = startOfMonth(now);
       }
       
-      // Generate monthly periods from start date to now
       const currentDate = new Date(startDate);
       while (currentDate <= now) {
         periods.push(new Date(currentDate));
@@ -180,23 +175,29 @@ export default function ProfitLoss() {
       formatString = "MMM yyyy";
     } else {
       switch (timeRange) {
-        case "hourly":
-          // Hours in current hour (just one period)
-          const startOfHour = new Date(now);
-          startOfHour.setMinutes(0, 0, 0);
-          periods.push(startOfHour);
-          formatString = "HH:00";
-          break;
         case "daily":
           // Today - show hourly breakdown
           for (let i = 0; i < 24; i++) {
             const date = new Date(now);
             date.setHours(i, 0, 0, 0);
-            if (date <= now) {
-              periods.push(date);
-            }
+            periods.push(date);
           }
           formatString = "HH:00";
+          break;
+        case "weekly":
+          // This week (starting Monday)
+          const monday = new Date(now);
+          const day = now.getDay();
+          const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+          monday.setDate(diff);
+          monday.setHours(0, 0, 0, 0);
+          
+          let curr = new Date(monday);
+          while (curr <= now) {
+            periods.push(new Date(curr));
+            curr.setDate(curr.getDate() + 1);
+          }
+          formatString = "EEE dd";
           break;
         case "monthly":
           // Days in current month
@@ -237,28 +238,30 @@ export default function ProfitLoss() {
 
     const data: ProfitData[] = periods.map(period => {
       const nextPeriod = new Date(period);
-      console.log('Processing period:', period.toISOString(), 'to', nextPeriod.toISOString());
       switch (timeRange) {
-        case "hourly":
+        case "daily":
           nextPeriod.setHours(nextPeriod.getHours() + 1);
           break;
-        case "daily":
+        case "weekly":
+        case "monthly":
           nextPeriod.setDate(nextPeriod.getDate() + 1);
           break;
-        case "monthly":
+        case "yearly":
           nextPeriod.setMonth(nextPeriod.getMonth() + 1);
           break;
-        case "yearly":
-          nextPeriod.setFullYear(nextPeriod.getFullYear() + 1);
+        case "all":
+          nextPeriod.setMonth(nextPeriod.getMonth() + 1);
           break;
       }
 
-      // Filter orders for this period (only include if >= startDate)
+      // Filter orders for this period
       const periodOrders = orders.filter(o => {
         if (!o.date) return false;
         const orderDate = typeof o.date === 'string' ? parseISO(o.date) : new Date(o.date);
-        // Must be >= startDate and in the period range
-        if (orderDate < startDate) return false;
+        
+        if (timeRange === 'daily') {
+          return orderDate >= period && orderDate < nextPeriod;
+        }
         
         const normalizedOrderDate = startOfDay(orderDate);
         const normalizedPeriod = startOfDay(period);
@@ -270,8 +273,10 @@ export default function ProfitLoss() {
       const periodReturns = returns.filter(r => {
         if (!r.createdAt) return false;
         const returnDate = typeof r.createdAt === 'string' ? parseISO(r.createdAt) : new Date(r.createdAt);
-        // Must be >= startDate
-        if (returnDate < startDate) return false;
+        
+        if (timeRange === 'daily') {
+          return returnDate >= period && returnDate < nextPeriod;
+        }
         
         const normalizedReturnDate = startOfDay(returnDate);
         const normalizedPeriod = startOfDay(period);
@@ -284,8 +289,10 @@ export default function ProfitLoss() {
         if (!a.transactionDate) return false;
         const txDate = typeof a.transactionDate === 'string' ? parseISO(a.transactionDate) : new Date(a.transactionDate);
         const isPurchase = a.transactionType === "purchase";
-        // Must be >= startDate
-        if (txDate < startDate) return false;
+        
+        if (timeRange === 'daily') {
+          return isPurchase && txDate >= period && txDate < nextPeriod;
+        }
         
         const normalizedTxDate = startOfDay(txDate);
         const normalizedPeriod = startOfDay(period);
@@ -365,25 +372,6 @@ export default function ProfitLoss() {
     });
 
     console.log('Generated profitData:', data);
-    
-    // Detailed analysis of the data
-    console.log('Data analysis:');
-    data.forEach((d, index) => {
-      console.log(`  Period ${index}: ${d.period} - Revenue: ${d.revenue}, Cost: ${d.cost}, Profit: ${d.profit}, Orders: ${d.orders}, Returns: ${d.returns}`);
-    });
-    
-    // TEMPORARY: Add some test data if all values are zero
-    if (data.length > 0 && !data.some(d => d.revenue > 0 || d.cost > 0 || d.profit !== 0)) {
-      console.log('Adding test data for debugging');
-      // Add test data for the last period
-      const lastIndex = data.length - 1;
-      data[lastIndex] = {
-        ...data[lastIndex],
-        revenue: 1000,
-        cost: 600,
-        profit: 400
-      };
-    }
     
     // Debug: Check if we have any non-zero values
     const hasNonZeroValues = data.some(d => d.revenue > 0 || d.cost > 0 || d.profit !== 0);
@@ -710,26 +698,48 @@ export default function ProfitLoss() {
     const totalCost = profitData.reduce((sum, d) => sum + d.cost, 0);
     
     // Sales = Total Revenue from orders (stock out)
-    const sales = orders.reduce((sum, order) => {
+    const filteredOrders = orders.filter(o => {
+      if (!o.date) return false;
+      const orderDate = typeof o.date === 'string' ? parseISO(o.date) : new Date(o.date);
+      return orderDate >= getStartDate;
+    });
+
+    const sales = filteredOrders.reduce((sum, order) => {
       return sum + parseFloat(order.totalAmount.toString());
     }, 0);
 
-    // Subtract refunded amounts
-    const refundAmount = returns.reduce((sum, ret) => {
+    const filteredReturns = returns.filter(r => {
+      if (!r.createdAt) return false;
+      const returnDate = typeof r.createdAt === 'string' ? parseISO(r.createdAt) : new Date(r.createdAt);
+      return returnDate >= getStartDate;
+    });
+
+    const refundAmount = filteredReturns.reduce((sum, ret) => {
       return sum + (ret.refundAmount ? parseFloat(ret.refundAmount.toString()) : 0);
     }, 0);
 
     const netSales = sales - refundAmount;
 
     // Purchase = Total cost from purchases (stock in)
-    const purchase = accounts
+    const filteredAccounts = accounts.filter(a => {
+      if (!a.transactionDate) return false;
+      const txDate = typeof a.transactionDate === 'string' ? parseISO(a.transactionDate) : new Date(a.transactionDate);
+      return txDate >= getStartDate;
+    });
+
+    const purchase = filteredAccounts
       .filter(a => a.transactionType === "purchase")
       .reduce((sum, a) => {
         return sum + parseFloat(a.cost.toString());
       }, 0);
 
-    // Calculate purchase returns (items returned to suppliers)
-    const purchaseReturnCost = movements
+    const filteredMovements = movements.filter(m => {
+      if (!m.createdAt) return false;
+      const movementDate = typeof m.createdAt === 'string' ? parseISO(m.createdAt) : new Date(m.createdAt);
+      return movementDate >= getStartDate;
+    });
+
+    const purchaseReturnCost = filteredMovements
       .filter(m => m.type === "out" && (m.reason === "purchase return" || m.reason === "supplier return"))
       .reduce((sum, m) => {
         const product = productMap.get(m.productId);
@@ -737,38 +747,31 @@ export default function ProfitLoss() {
         return sum + (costPrice * m.quantity);
       }, 0);
 
-    // Opening Stock = Total value of initial inventory (can be calculated from first movements or set manually)
-    // For now, we'll calculate it based on current stock minus net changes
+    // Calculation for Opening and Closing stock for the period
     const openingStock = products.reduce((sum, product) => {
       const costPrice = product.costPrice ? parseFloat(product.costPrice.toString()) : 0;
-      // Get initial quantity (this is simplified - in real scenario, you'd track this separately)
       const currentStock = product.stockQuantity;
       
-      // Calculate net sales quantity for this product
-      const soldQty = orders.reduce((qty, order) => {
-        const item = order.items.find(i => i.productId === product.id);
-        return qty + (item ? item.quantity : 0);
-      }, 0);
+      // All activity AFTER startDate
+      const soldAfter = orders.filter(o => o.date && (typeof o.date === 'string' ? parseISO(o.date) : new Date(o.date)) >= getStartDate)
+        .reduce((qty, order) => qty + (order.items.find(i => i.productId === product.id)?.quantity || 0), 0);
       
-      const returnedQty = returns.reduce((qty, ret) => {
-        const item = ret.items.find(i => i.productId === product.id);
-        return qty + (item ? item.quantity : 0);
-      }, 0);
+      const returnedAfter = returns.filter(r => r.createdAt && new Date(r.createdAt) >= getStartDate)
+        .reduce((qty, ret) => qty + (ret.items.find(i => i.productId === product.id)?.quantity || 0), 0);
       
-      const purchasedQty = movements
-        .filter(m => m.productId === product.id && m.type === "in" && m.reason === "purchase")
+      const purchasedAfter = movements.filter(m => m.productId === product.id && m.type === "in" && m.reason === "purchase" && (m.createdAt ? (typeof m.createdAt === 'string' ? parseISO(m.createdAt) : new Date(m.createdAt)) : new Date()) >= getStartDate)
         .reduce((qty, m) => qty + m.quantity, 0);
-      
-      const purchaseReturnQty = movements
-        .filter(m => m.productId === product.id && m.type === "out" && (m.reason === "purchase return" || m.reason === "supplier return"))
+        
+      const purchaseReturnAfter = movements.filter(m => m.productId === product.id && m.type === "out" && (m.reason === "purchase return" || m.reason === "supplier return") && (m.createdAt ? (typeof m.createdAt === 'string' ? parseISO(m.createdAt) : new Date(m.createdAt)) : new Date()) >= getStartDate)
         .reduce((qty, m) => qty + m.quantity, 0);
-      
-      // Opening stock = Current stock - Purchase + Sales - Returns + Purchase Returns
-      const openingQty = currentStock - purchasedQty + soldQty - returnedQty + purchaseReturnQty;
-      return sum + (openingQty * costPrice);
+
+      // Stock at start = Current Stock - Net Change since start
+      // change = purchase - sales + returns - purchaseReturns
+      const netChangeSinceStart = purchasedAfter - soldAfter + returnedAfter - purchaseReturnAfter;
+      const openingQty = currentStock - netChangeSinceStart;
+      return sum + (Math.max(0, openingQty) * costPrice);
     }, 0);
 
-    // Closing Stock = Current inventory value
     const closingStock = products.reduce((sum, product) => {
       const costPrice = product.costPrice ? parseFloat(product.costPrice.toString()) : 0;
       return sum + (product.stockQuantity * costPrice);
@@ -827,7 +830,7 @@ export default function ProfitLoss() {
       totalPurchaseReturns,
       returnRate,
     };
-  }, [profitData, accounts, productMap, orders, returns, products, movements]);
+  }, [profitData, accounts, productMap, orders, returns, products, movements, getStartDate]);
 
   // Calculate time-range specific statistics for the 4 cards
   const timeRangeStatistics = useMemo(() => {
@@ -965,8 +968,8 @@ export default function ProfitLoss() {
                   <SelectValue placeholder="Select range" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="hourly">This Hour</SelectItem>
                   <SelectItem value="daily">Today</SelectItem>
+                  <SelectItem value="weekly">This Week</SelectItem>
                   <SelectItem value="monthly">This Month</SelectItem>
                   <SelectItem value="yearly">This Year</SelectItem>
                   <SelectItem value="all">All Time</SelectItem>
