@@ -68,52 +68,6 @@ export default function StockHistory() {
     queryKey: ["/api/returns"],
   });
 
-  // Calculate overall statistics
-  const statistics = useMemo(() => {
-    // Calculate from stock movements (excluding initial stock)
-    const totalPurchasedFromMovements = movements
-      .filter(m => {
-        const reasonLower = m.reason.toLowerCase();
-        return m.type === "in" && reasonLower === "purchase";
-      })
-      .reduce((sum, m) => sum + m.quantity, 0);
-
-    const totalReturnedFromMovements = movements
-      .filter(m => m.type === "in" && (m.reason === "Return" || m.reason === "return"))
-      .reduce((sum, m) => sum + m.quantity, 0);
-
-    const totalSoldFromMovements = movements
-      .filter(m => m.type === "out" && (m.reason === "Sale" || m.reason === "sale"))
-      .reduce((sum, m) => sum + m.quantity, 0);
-
-    // Calculate from orders
-    const totalSoldFromOrders = orders.reduce((sum, order) => {
-      if (order.items && Array.isArray(order.items)) {
-        return sum + order.items.reduce((itemSum: number, item: any) => itemSum + item.quantity, 0);
-      }
-      return sum;
-    }, 0);
-
-    // Calculate from returns
-    const totalReturnedFromReturns = returns.reduce((sum, ret) => {
-      if (ret.items && Array.isArray(ret.items)) {
-        return sum + ret.items.reduce((itemSum: number, item: any) => itemSum + item.quantity, 0);
-      }
-      return sum;
-    }, 0);
-
-    const totalAvailable = products.reduce((sum, p) => sum + p.stockQuantity, 0);
-    const totalSold = totalSoldFromMovements + totalSoldFromOrders;
-    const totalReturned = totalReturnedFromMovements + totalReturnedFromReturns;
-
-    return {
-      available: totalAvailable,
-      sold: totalSold,
-      returned: totalReturned,
-      purchased: totalPurchasedFromMovements,
-    };
-  }, [movements, products, orders, returns]);
-
   // Calculate per-product stock statistics with date range filter support
   const stockStats = useMemo(() => {
     const statsMap = new Map<string, any>();
@@ -144,100 +98,74 @@ export default function StockHistory() {
         initialStock: 0,
       });
     });
-  
-    // First pass: Calculate initial stock at the start of the filter period
-    // This is the stock available at the end of the day before startDate
-    if (startDateTime) {
-      // For each product, calculate stock from all movements before startDate
-      products.forEach(product => {
-        const currentStats = statsMap.get(product.id);
-        if (!currentStats) return;
-        
-        // Aggregate all movements before startDate to get opening stock
-        movements.forEach(m => {
-          if (m.productId !== product.id) return;
-          if (!m.createdAt) return;
-          
-          const movementDate = typeof m.createdAt === 'string' ? new Date(m.createdAt) : m.createdAt;
-          // Only count movements strictly before the start date
-          if (movementDate >= startDateTime) return;
-          
-          const reasonLower = m.reason.toLowerCase();
-          
-          switch (m.type) {
-            case "in":
-              if (reasonLower === "initial stock" || reasonLower === "purchase" || reasonLower === "return") {
-                currentStats.initialStock += m.quantity;
-              }
-              break;
-            case "out":
-              if (reasonLower === "sale" || reasonLower === "purchase return" || reasonLower === "supplier return") {
-                currentStats.initialStock -= m.quantity;
-              }
-              break;
-          }
-        });
-        
-        // Ensure initial stock is not negative
-        if (currentStats.initialStock < 0) {
-          currentStats.initialStock = 0;
-        }
-      });
-    }
-  
-    // Second pass: Calculate movements within the filter period
+
+    // Single pass through movements to calculate everything
     movements.forEach(m => {
       const currentStats = statsMap.get(m.productId);
       if (!currentStats) return;
-      
-      // Apply date range filter if dates are selected
-      if (m.createdAt) {
-        const movementDate = typeof m.createdAt === 'string' ? new Date(m.createdAt) : m.createdAt;
-        
-        if (startDateTime && movementDate < startDateTime) {
-          return; // Skip movements before start date
-        }
-        
-        if (endDateTime && movementDate > endDateTime) {
-          return; // Skip movements after end date
-        }
-      }
-      
+
+      const movementDate = m.createdAt ? (typeof m.createdAt === 'string' ? new Date(m.createdAt) : m.createdAt) : null;
+      if (!movementDate) return;
+
       const reasonLower = m.reason.toLowerCase();
-  
-      switch (m.type) {
-        case "in":
-          if (reasonLower === "initial stock") {
+      
+      // Movements BEFORE the range contribute to initialStock
+      if (startDateTime && movementDate < startDateTime) {
+        switch (m.type) {
+          case "in":
             currentStats.initialStock += m.quantity;
-          } else if (reasonLower === "purchase") {
-            currentStats.purchased += m.quantity;
-          } else if (reasonLower === "return") {
-            currentStats.returned += m.quantity;
-          }
-          break;
-        case "out":
-          if (reasonLower === "sale") {
-            currentStats.sold += m.quantity;
-          } else if (reasonLower === "purchase return" || reasonLower === "supplier return") {
-            currentStats.purchaseReturn += m.quantity;
-          }
-          break;
-        case "adjustment":
-          // For adjustment movements, these are direct quantity changes
-          // Typically used for setting stock to a specific value
-          break;
+            break;
+          case "out":
+            currentStats.initialStock -= m.quantity;
+            break;
+          case "adjustment":
+            // Adjustment acts as a reset
+            currentStats.initialStock = m.quantity;
+            break;
+        }
+      } 
+      // Movements WITHIN the range (or all movements if no filter) contribute to period activity
+      else if ((!startDateTime || movementDate >= startDateTime) && (!endDateTime || movementDate <= endDateTime)) {
+        switch (m.type) {
+          case "in":
+            if (reasonLower.includes("initial stock")) {
+              currentStats.initialStock += m.quantity;
+            } else if (reasonLower.includes("purchase")) {
+              currentStats.purchased += m.quantity;
+            } else if (reasonLower.includes("return")) {
+              currentStats.returned += m.quantity;
+            } else {
+              currentStats.purchased += m.quantity;
+            }
+            break;
+          case "out":
+            if (reasonLower.includes("sale")) {
+              currentStats.sold += m.quantity;
+            } else if (reasonLower.includes("purchase return") || reasonLower.includes("supplier return")) {
+              currentStats.purchaseReturn += m.quantity;
+            } else {
+              currentStats.sold += m.quantity;
+            }
+            break;
+          case "adjustment":
+            // If adjustment happens in the period, we can treat it as overriding the current calculated stock
+            // This is complex for a running total, so we'll just log it or handle it as a manual adjustment
+            // to the 'available' calculation at the end. For now, we'll ignore it within the period activity
+            // columns to keep them pure (sold, purchased, etc.) but it affects the final 'available'.
+            break;
+        }
       }
     });
-  
-    // Calculate available stock using the proper formula
-    // When filter is active: available = initialStock (at period start) + purchased - sold + returned - purchaseReturn
-    // When no filter: use current stock from database
-    if (startDateTime || endDate) {
-      Array.from(statsMap.values()).forEach(stats => {
-        // Recalculate based on period starting stock
-        stats.available = stats.initialStock + stats.purchased - stats.sold + stats.returned - stats.purchaseReturn;
-      });
-    }
+
+    // Final pass to ensure all products have correct available stock from history
+    statsMap.forEach(stats => {
+      // Ensure initial stock is not negative
+      if (stats.initialStock < 0) stats.initialStock = 0;
+      
+      // ALWAYS calculate available from history to ensure consistency with shown columns
+      // Available (Ending Stock) = Initial (at period start) + Purchased + Returned - Sold - Purchase Return
+      stats.available = stats.initialStock + stats.purchased + stats.returned - stats.sold - stats.purchaseReturn;
+    });
   
     return Array.from(statsMap.values());
   }, [products, movements, startDate, endDate]);
@@ -259,66 +187,10 @@ export default function StockHistory() {
     });
   }, [products, stockStats]);
 
-  // Calculate statistics from the Product Stock Overview table data
-  const tableStatistics = useMemo(() => {
-    // Calculate totals from the product stock data table
-    const totalAvailable = productStockData.reduce((sum, product) => sum + product.available, 0);
-    const totalSold = productStockData.reduce((sum, product) => sum + product.sold, 0);
-    const totalReturned = productStockData.reduce((sum, product) => sum + product.returned, 0);
-    const totalPurchased = productStockData.reduce((sum, product) => sum + product.purchased, 0);
-    
-    return {
-      available: totalAvailable,
-      sold: totalSold,
-      returned: totalReturned,
-      purchased: totalPurchased,
-      hasDateRange: startDate || endDate
-    };
-  }, [productStockData, startDate, endDate]);
-
   // Prepare purchased stock data for separate table
   const purchasedStockData = useMemo(() => {
     return productStockData.filter(p => p.purchased > 0);
   }, [productStockData]);
-
-  // Get unique categories
-  const categories = useMemo(() => {
-    return ["all", ...new Set(products.map(p => p.category))];
-  }, [products]);
-
-  // Group orders with their returns
-  const groupedTransactions = useMemo(() => {
-    const transactions: any[] = [];
-
-    // Add all orders
-    orders.forEach(order => {
-      const orderReturns = returns.filter(ret => ret.orderId === order.id);
-      transactions.push({
-        type: 'order',
-        data: order,
-        returns: orderReturns,
-        date: order.date,
-      });
-    });
-
-    // Add standalone returns (if any without order)
-    returns.forEach(ret => {
-      if (!ret.orderId) {
-        transactions.push({
-          type: 'return',
-          data: ret,
-          returns: [],
-          date: ret.createdAt,
-        });
-      }
-    });
-
-    return transactions.sort((a, b) => {
-      const dateA = new Date(a.date).getTime();
-      const dateB = new Date(b.date).getTime();
-      return dateB - dateA;
-    });
-  }, [orders, returns]);
 
   // Filter and sort products
   const filteredAndSortedProducts = useMemo(() => {
@@ -379,6 +251,76 @@ export default function StockHistory() {
       }
     });
   }, [productStockData, categoryFilter, sortField, sortOrder]);
+
+  // Calculate statistics from the Product Stock Overview table data (respects both date and category)
+  const tableStatistics = useMemo(() => {
+    // We use filteredAndSortedProducts so it respects category filter
+    const visibleProducts = filteredAndSortedProducts;
+    
+    const totalAvailable = visibleProducts.reduce((sum, product) => sum + product.available, 0);
+    const totalSold = visibleProducts.reduce((sum, product) => sum + product.sold, 0);
+    const totalReturned = visibleProducts.reduce((sum, product) => sum + product.returned, 0);
+    const totalPurchased = visibleProducts.reduce((sum, product) => sum + product.purchased, 0);
+    
+    return {
+      available: totalAvailable,
+      sold: totalSold,
+      returned: totalReturned,
+      purchased: totalPurchased,
+      hasDateRange: !!(startDate || endDate)
+    };
+  }, [filteredAndSortedProducts, startDate, endDate]);
+
+  // Get unique categories
+  const categories = useMemo(() => {
+    return ["all", ...new Set(products.map(p => p.category))];
+  }, [products]);
+
+  // Group orders with their returns
+  const groupedTransactions = useMemo(() => {
+    const transactions: any[] = [];
+    
+    const startDateTime = startDate ? new Date(startDate).setHours(0, 0, 0, 0) : null;
+    const endDateTime = endDate ? new Date(endDate).setHours(23, 59, 59, 999) : null;
+
+    // Add all orders
+    orders.forEach(order => {
+      const orderDate = new Date(order.date).getTime();
+      if (startDateTime && orderDate < startDateTime) return;
+      if (endDateTime && orderDate > endDateTime) return;
+
+      const orderReturns = returns.filter(ret => ret.orderId === order.id);
+      transactions.push({
+        type: 'order',
+        data: order,
+        returns: orderReturns,
+        date: order.date,
+      });
+    });
+
+    // Add standalone returns (if any without order)
+    returns.forEach(ret => {
+      const returnDate = new Date(ret.createdAt).getTime();
+      if (startDateTime && returnDate < startDateTime) return;
+      if (endDateTime && returnDate > endDateTime) return;
+
+      if (!ret.orderId) {
+        transactions.push({
+          type: 'return',
+          data: ret,
+          returns: [],
+          date: ret.createdAt,
+        });
+      }
+    });
+
+    return transactions.sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return dateB - dateA;
+    });
+  }, [orders, returns, startDate, endDate]);
+
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
