@@ -72,18 +72,19 @@ export default function StockHistory() {
   const stockStats = useMemo(() => {
     const statsMap = new Map<string, any>();
     
-    // Get date boundaries
+    // Get date boundaries - normalize to start of day for consistent comparison
     let startDateTime: Date | null = null;
-    let endDateTime: Date | null = null;
+    let endDateTimeExclusive: Date | null = null;
     
     if (startDate) {
       startDateTime = new Date(startDate);
-      startDateTime.setHours(0, 0, 0, 0);
+      startDateTime.setHours(0, 0, 0, 0); // Start of selected start date
     }
     
     if (endDate) {
-      endDateTime = new Date(endDate);
-      endDateTime.setHours(23, 59, 59, 999);
+      endDateTimeExclusive = new Date(endDate);
+      endDateTimeExclusive.setHours(23, 59, 59, 999); // Start of selected end date
+      endDateTimeExclusive.setDate(endDateTimeExclusive.getDate() + 1); // Move to next day for exclusive upper bound
     }
   
     // Initialize with zeros
@@ -106,11 +107,15 @@ export default function StockHistory() {
 
       const movementDate = m.createdAt ? (typeof m.createdAt === 'string' ? new Date(m.createdAt) : m.createdAt) : null;
       if (!movementDate) return;
+      
+      // Normalize movement date to start of day in local time for proper comparison
+      const normalizedMovementDate = new Date(movementDate);
+      normalizedMovementDate.setHours(0, 0, 0, 0);
 
       const reasonLower = m.reason.toLowerCase();
       
       // Movements BEFORE the range contribute to initialStock
-      if (startDateTime && movementDate < startDateTime) {
+      if (startDateTime && normalizedMovementDate < startDateTime) {
         switch (m.type) {
           case "in":
             currentStats.initialStock += m.quantity;
@@ -125,7 +130,7 @@ export default function StockHistory() {
         }
       } 
       // Movements WITHIN the range (or all movements if no filter) contribute to period activity
-      else if ((!startDateTime || movementDate >= startDateTime) && (!endDateTime || movementDate <= endDateTime)) {
+      else if ((!startDateTime || normalizedMovementDate >= startDateTime) && (!endDateTimeExclusive || normalizedMovementDate < endDateTimeExclusive)) {
         switch (m.type) {
           case "in":
             if (reasonLower.includes("initial stock")) {

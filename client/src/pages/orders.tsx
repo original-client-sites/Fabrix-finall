@@ -53,25 +53,28 @@ export default function Orders() {
     const matchesStatus =
       selectedStatus === "all" || order.status === selectedStatus;
     
-    // Date range filter - normalize all dates to start of day for proper comparison
-    let matchesDate = true;
-    if (order.date) {
-      const orderDate = new Date(order.date);
-      // Normalize order date to start of day (remove time component)
-      orderDate.setHours(0, 0, 0, 0);
-      
-      if (startDate) {
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        if (orderDate < start) matchesDate = false;
-      }
-      
-      if (endDate && matchesDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999); // Include the entire end date
-        if (orderDate > end) matchesDate = false;
-      }
-    }
+   // Date range filter - normalize all dates to start of day for proper comparison
+let matchesDate = true;
+
+if (order.date) {
+  const orderDate = new Date(order.date);
+  // Normalize order date to UTC start of day
+  orderDate.setUTCHours(0, 0, 0, 0);
+
+  if (startDate) {  
+    const start = new Date(startDate);  
+    start.setUTCHours(0, 0, 0, 0);  
+
+    if (orderDate < start) matchesDate = false;  
+  }  
+    
+  if (endDate && matchesDate) {  
+    const end = new Date(endDate);  
+    end.setUTCHours(23, 59, 59, 999); // end of day
+
+    if (orderDate > end) matchesDate = false;  
+  }
+}
     
     // Amount range filter
     const orderAmount = typeof order.totalAmount === 'number' ? order.totalAmount : parseFloat(order.totalAmount);
